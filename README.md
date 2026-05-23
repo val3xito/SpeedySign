@@ -8,7 +8,7 @@
 
 > **SpeedySign** es una plataforma Full-Stack (PWA Web + Servidor de Firmas Node.js) que permite firmar e instalar archivos IPA de iOS/iPadOS directamente desde tu dispositivo, sin necesidad de ordenador, de forma rápida, segura y completamente autónoma.
 
-🌐 **Demo en vivo:** [speedysign.val3xito.com](https://speedysign.val3xito.com)
+🌐 [speedysign.val3xito.com](https://speedysign.val3xito.com)
 
 ---
 
@@ -33,16 +33,10 @@ graph TD
 
 * **📦 Gestión de Fuentes (Repositorios)**: Explora catálogos de aplicaciones agregados dinámicamente mediante JSON o importa listados de URLs en lote.
 * **🔐 Criptografía y Firma Real**: Orquestación automática de **zsign** y **arksign** en caliente. Permite la conversión de certificados `.p12` modernos a formatos heredados mediante OpenSSL en el servidor.
-* **🛠️ Personalización Avanzada de IPAs**:
-  * Inyección fuerte y débil de librerías dinámicas (`.dylib`).
-  * Modificación del nombre visible de la app (`Display Name`).
-  * Cambio o sobrescritura de `Bundle Identifier` y `Versión`.
-  * Habilitar el uso compartido de archivos en iTunes/Files (`UIFileSharingEnabled`).
-  * Eliminación de restricciones de dispositivo.
 * **🛡️ Seguridad y Privacidad Blindada**:
   * Almacenamiento seguro temporal de certificados en memoria.
   * Uso de **`secureDelete`** (sobrescritura física de bits en disco antes de eliminar archivos sensibles para evitar recuperación de datos).
-  * Limpieza programada automática de IPAs firmados y temporales huérfanos cada 5 minutos.
+  * Limpieza programada automática de IPAs firmados y temporales huérfanos cada 3 minutos.
   * Autenticación anónima por dispositivo con Supabase Auth.
 * **⚡ Rendimiento y Web Premium (PWA)**:
   * Compresión Gzip activada en Express.
@@ -108,4 +102,4 @@ Solo necesitas conectar tu repositorio a Render o a tu VPS mediante Coolify.
 SpeedySign es una herramienta de software independiente creada con fines estrictamente educativos y de experimentación. 
 * El software no proporciona, aloja ni distribuye de manera predeterminada ningún tipo de archivo protegido por derechos de autor.
 * El usuario final asume la responsabilidad legal exclusiva sobre el origen y validez de los certificados de desarrollo (.p12) y de los archivos de aplicación (.ipa) que procese en la plataforma.
-* Las firmas temporales y certificados subidos se procesan bajo protocolos de anonimización absoluta y se destruyen de manera segura y definitiva del disco en un plazo máximo de 5 minutos.
+* Las firmas temporales y certificados subidos se procesan bajo protocolos de anonimización absoluta y se destruyen de manera segura y definitiva del disco en un plazo de 3 minutos.
