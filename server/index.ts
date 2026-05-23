@@ -180,13 +180,14 @@ app.use(express.json({ limit: "1mb" }));
 if (fs.existsSync(DIST_DIR)) {
     // Servir estáticos con políticas de caché optimizadas para PWA/Expo
     app.use(express.static(DIST_DIR, {
+        index: false, // Evita servir index.html de forma estática para pasar por el fallback y aplicar inyección
         maxAge: "1h",
         setHeaders: (res, filePath) => {
             if (filePath.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?|eot|ttf|otf)$/)) {
                 // Recursos inmutables cacheables por 1 año
                 res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-            } else if (filePath.endsWith("index.html") || filePath.endsWith("manifest.json")) {
-                // Evitar caché en el HTML y el manifiesto para actualización inmediata de la PWA
+            } else if (filePath.endsWith("manifest.json")) {
+                // Evitar caché en el manifiesto para actualización inmediata de la PWA
                 res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
             }
         }
@@ -264,14 +265,26 @@ app.get("/manifest.json", (_req, res) => {
 
 const INDEX_HTML_PATH = path.join(DIST_DIR, "index.html");
 
-// Tags PWA que Expo no incluye en su template generado
+// Tags PWA y SEO / Social Tags (OpenGraph y Twitter) que Expo no incluye en su template
 const PWA_TAGS = `
   <!-- ═══ PWA / iOS Safari Standalone Mode (inyectado por servidor) ═══ -->
   <link rel="manifest" href="/manifest.json" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="SpeedySign" />
-  <link rel="apple-touch-icon" href="/assets/logo-transparent.png" />`;
+  <link rel="apple-touch-icon" href="/assets/logo-transparent.png" />
+  
+  <!-- ═══ SEO / Social Tags (OpenGraph y Twitter Cards) ═══ -->
+  <meta name="description" content="Firma tus archivos IPA con tu propio certificado directamente desde tu dispositivo de forma rápida y segura." />
+  <meta property="og:title" content="SpeedySign - Firma e instala aplicaciones iOS" />
+  <meta property="og:description" content="Firma tus archivos IPA con tu propio certificado directamente desde tu dispositivo de forma rápida y segura." />
+  <meta property="og:image" content="https://speedysign.val3xito.com/assets/logo-transparent.png" />
+  <meta property="og:url" content="https://speedysign.val3xito.com" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="SpeedySign - Firma e instala aplicaciones iOS" />
+  <meta name="twitter:description" content="Firma tus archivos IPA con tu propio certificado directamente desde tu dispositivo de forma rápida y segura." />
+  <meta name="twitter:image" content="https://speedysign.val3xito.com/assets/logo-transparent.png" />`;
 
 // Script que evita que <a> tags internos abran Safari en modo standalone iOS
 const PWA_SCRIPT = `
