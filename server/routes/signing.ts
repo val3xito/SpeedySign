@@ -94,8 +94,8 @@ export const signLimiter = rateLimit({
     max: 30,                   // 30 firmas por hora (muy generoso, solo para evitar spam masivo)
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => (req as AuthRequest).userId || req.ip || "unknown",
-    message: { error: "Has superado el límite de 30 firmas por hora. Intenta de nuevo más tarde." },
+    keyGenerator: (req) => req.ip || "unknown",
+    message: { error: "Has superado el límite de 30 firmas por hora para tu dirección IP. Intenta de nuevo más tarde." },
 });
 
 // Mapa en memoria para el cooldown de subidas personalizadas de IPAs (3 minutos)
@@ -250,6 +250,8 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
     const provisionFile = files["provisionFile"]?.[0] ?? null;
     const dylibFiles    = (files["dylibFiles"] ?? []) as any[];
 
+    const clientIp      = req.ip || "unknown";
+
     // Lista de archivos sensibles a limpiar en cualquier salida
     const sensitiveFiles: (string | undefined)[] = [p12File?.path, provisionFile?.path];
     const cleanupAll = (includeOutput = false) => {
@@ -265,7 +267,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
     };
 
     // Cooldown de 3 minutos para cualquier firma de IPA (por subida directa o descarga remota)
-    const lastUpload = customUploadCooldowns.get(req.userId!) || 0;
+    const lastUpload = customUploadCooldowns.get(clientIp) || 0;
     const now = Date.now();
     if (now - lastUpload < 3 * 60 * 1000) {
         // Eliminar archivos que multer acaba de guardar antes de rechazar
@@ -274,7 +276,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
         });
         return res.status(429).json({ error: "Solo puedes realizar una firma de aplicación cada 3 minutos. Por favor, espera." });
     }
-    customUploadCooldowns.set(req.userId!, now);
+    customUploadCooldowns.set(clientIp, now);
 
     if (!ipaUrl && !ipaFile) {
         return res.status(400).json({ error: "Se requiere ipaUrl o un ipaFile" });
@@ -355,50 +357,50 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
     // - uuid: hace el nombre imposible de enumerar (122 bits de entropía)
     const userId       = req.userId!;
 
-    const strikeData = userStrikes.get(userId);
+    const strikeData = userStrikes.get(clientIp);
     if (strikeData && strikeData.bannedUntil > Date.now()) {
         const remainingHours = Math.ceil((strikeData.bannedUntil - Date.now()) / (1000 * 60 * 60));
         [ipaFile, ...dylibFiles].forEach((uf: any) => {
             if (uf?.path && fs.existsSync(uf.path)) try { fs.unlinkSync(uf.path); } catch { }
         });
         sensitiveFiles.forEach(f => { if (f && fs.existsSync(f)) secureDelete(f); });
-        return res.status(403).json({ error: `Cuenta bloqueada por infracciones. Intenta de nuevo en ${remainingHours} horas.` });
+        return res.status(403).json({ error: `Dirección IP bloqueada por infracciones. Intenta de nuevo en ${remainingHours} horas.` });
     }
 
     const todayStr = new Date().toISOString().split("T")[0];
-    let userDaily = dailySignatures.get(userId);
-    if (!userDaily || userDaily.date !== todayStr) {
-        userDaily = { count: 0, date: todayStr };
+    let ipDaily = dailySignatures.get(clientIp);
+    if (!ipDaily || ipDaily.date !== todayStr) {
+        ipDaily = { count: 0, date: todayStr };
     }
-    if (userDaily.count >= MAX_DAILY_SIGNS) {
+    if (ipDaily.count >= MAX_DAILY_SIGNS) {
         [ipaFile, ...dylibFiles].forEach((uf: any) => {
             if (uf?.path && fs.existsSync(uf.path)) try { fs.unlinkSync(uf.path); } catch { }
         });
         sensitiveFiles.forEach(f => { if (f && fs.existsSync(f)) secureDelete(f); });
-        return res.status(429).json({ error: `Has alcanzado el límite diario de ${MAX_DAILY_SIGNS} instalaciones. Vuelve mañana.` });
+        return res.status(429).json({ error: `Tu dirección IP ha alcanzado el límite diario de ${MAX_DAILY_SIGNS} instalaciones. Vuelve mañana.` });
     }
 
     const addStrike = () => {
-        const data = userStrikes.get(userId) || { count: 0, bannedUntil: 0 };
+        const data = userStrikes.get(clientIp) || { count: 0, bannedUntil: 0 };
         data.count++;
         if (data.count >= MAX_STRIKES) {
             data.bannedUntil = Date.now() + BAN_DURATION_MS;
             data.count = 0;
         }
-        userStrikes.set(userId, data);
+        userStrikes.set(clientIp, data);
     };
 
-    // Evitar múltiples instalaciones simultáneas del mismo usuario
-    if (activeUserSignings.has(userId)) {
+    // Evitar múltiples instalaciones simultáneas desde la misma IP
+    if (activeUserSignings.has(clientIp)) {
         [ipaFile, ...dylibFiles].forEach((uf: any) => {
             if (uf?.path && fs.existsSync(uf.path)) try { fs.unlinkSync(uf.path); } catch { }
         });
         sensitiveFiles.forEach(f => {
             if (f && fs.existsSync(f)) secureDelete(f);
         });
-        return res.status(429).json({ error: "Ya tienes una instalación en proceso. Por favor, espera a que termine antes de iniciar otra." });
+        return res.status(429).json({ error: "Ya tienes una instalación en proceso desde tu dirección IP. Por favor, espera a que termine." });
     }
-    activeUserSignings.add(userId);
+    activeUserSignings.add(clientIp);
 
     const fileToken    = randomUUID();
     const safeName     = appName.replace(/[^a-zA-Z0-9]/g, "_");
@@ -529,8 +531,8 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
         console.log(`  ✅ ¡Proceso completado! ${signedFileName}`);
 
         // Incrementar el uso diario al tener éxito
-        userDaily.count++;
-        dailySignatures.set(userId, userDaily);
+        ipDaily.count++;
+        dailySignatures.set(clientIp, ipDaily);
 
         if (jobId) { emitProgress(jobId, { phase: "done" }); cleanupJob(jobId); }
 
@@ -571,7 +573,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
     } finally {
         responseSent = true;
         req.off("close", onConnClose);
-        activeUserSignings.delete(userId);
+        activeUserSignings.delete(clientIp);
     }
 });
 
