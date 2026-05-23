@@ -33,7 +33,7 @@ RUN git clone https://github.com/nabzclan-reborn/ArkSigning.git /tmp/arksigning 
 # ── Build del frontend ──
 FROM node:20-slim AS frontend-builder
 
-# Truco para forzar que esta etapa espere a que los signers terminen (evita OOM en Render 512MB)
+# Truco para forzar que esta etapa espere a que los signers terminen (evita problemas de concurrencia de memoria)
 COPY --from=signer-builder /tmp/zsign/bin/zsign /tmp/zsign-dummy
 
 WORKDIR /frontend
