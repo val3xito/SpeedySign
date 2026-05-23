@@ -119,7 +119,7 @@ async function convertP12ToLegacy(p12Path: string, password: string): Promise<st
             '-passin',   `pass:${password}`,
             '-nodes',
             '-out',      pemPath,
-        ], (err1) => {
+        ], { timeout: 5000 }, (err1) => {
             if (err1) {
                 // openssl no disponible o P12 ya es legacy — usar original
                 return resolve(p12Path);
@@ -131,7 +131,7 @@ async function convertP12ToLegacy(p12Path: string, password: string): Promise<st
                 '-in',      pemPath,
                 '-out',     legacyPath,
                 '-passout', `pass:${password}`,
-            ], (err2) => {
+            ], { timeout: 5000 }, (err2) => {
                 // El PEM contiene la clave privada en texto claro → eliminación segura
                 secureDelete(pemPath);
 

@@ -8,7 +8,7 @@ import { Router, Request, Response } from "express";
 import https from "https";
 import http from "http";
 import rateLimit from "express-rate-limit";
-import { isPrivateHostname } from "../utils/validation";
+import { isPrivateHostname, safeLookup } from "../utils/validation";
 
 export const proxyRouter = Router();
 
@@ -43,6 +43,7 @@ function proxyFetchUrl(url: string, res: Response, redirects: number): void {
             "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
             "Referer": `${parsed.protocol}//${parsed.hostname}/`
         },
+        lookup: safeLookup
     }, (response: any) => {
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
             response.resume();
@@ -86,6 +87,7 @@ function proxyFetchImage(url: string, res: Response, redirects: number): void {
             "Accept": "image/webp,image/avif,image/png,image/jpeg,image/*,*/*;q=0.8",
             "Referer": `${parsed.protocol}//${parsed.hostname}/`,
         },
+        lookup: safeLookup
     }, (response: any) => {
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
             response.resume();

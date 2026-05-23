@@ -1,5 +1,5 @@
 import * as forge from 'node-forge';
-import { isPrivateHostname } from '../utils/validation';
+import { isPrivateHostname, safeLookup } from '../utils/validation';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as os from 'os';
@@ -50,7 +50,7 @@ async function extractCertsFromP12(p12Buffer: Buffer, password: string): Promise
                     'pkcs12', '-in', tempPath, '-nokeys',
                     '-passin', `pass:${password}`,
                     ...extraArgs,
-                ], { timeout: 10_000 });
+                ], { timeout: 5000 });
                 if (stdout.includes('-----BEGIN CERTIFICATE-----')) {
                     pemOutput = stdout;
                     break;
@@ -92,7 +92,7 @@ const DOWNLOAD_TIMEOUT_MS = 10_000; // 10 segundos máximo para descargar el cer
 function downloadUrl(url: string): Promise<Buffer> {
     const client = url.startsWith('https') ? require('https') : require('http');
     return new Promise((resolve, reject) => {
-        const req = client.get(url, (response: any) => {
+        const req = client.get(url, { lookup: safeLookup }, (response: any) => {
             if (response.statusCode !== 200) {
                 response.resume();
                 return reject(new Error(`HTTP ${response.statusCode} al descargar ${url}`));
