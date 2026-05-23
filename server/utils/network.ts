@@ -9,6 +9,7 @@ import fs from "fs";
 import os from "os";
 import { pipeline } from "stream/promises";
 import { Request } from "express";
+import { isPrivateHostname } from "./validation";
 
 const PORT = process.env.PORT || 3001;
 export const MAX_DOWNLOAD_SIZE = parseInt(process.env.MAX_DOWNLOAD_SIZE || "524288000", 10); // 500 MB por defecto
@@ -154,7 +155,17 @@ export function resolveGoogleDriveDownload(fileId: string): Promise<GoogleDriveR
                 return reject(new Error("Demasiados redirects al resolver Google Drive"));
             }
 
-            const parsed = new URL(currentUrl);
+            let parsed: URL;
+            try {
+                parsed = new URL(currentUrl);
+            } catch {
+                return reject(new Error("URL inválida al resolver Google Drive"));
+            }
+
+            if (isPrivateHostname(parsed.hostname)) {
+                return reject(new Error("URL no permitida (SSRF detectado)"));
+            }
+
             const reqHeaders: Record<string, string> = { ...headers };
             if (currentCookies.length > 0) {
                 reqHeaders["Cookie"] = currentCookies.map(c => c.split(";")[0]).join("; ");
@@ -290,7 +301,19 @@ export async function resolveUrlInfo(url: string): Promise<{ filename: string | 
         const MAX_REDIRECTS = 10;
 
         const makeRequest = (requestUrl: string, redirectsLeft: number) => {
-            const parsed = new URL(requestUrl);
+            let parsed: URL;
+            try {
+                parsed = new URL(requestUrl);
+            } catch {
+                resolve({ filename: null, size: null });
+                return;
+            }
+
+            if (isPrivateHostname(parsed.hostname)) {
+                resolve({ filename: null, size: null });
+                return;
+            }
+
             const proto = requestUrl.startsWith("https") ? https : http;
 
             const req = proto.get(requestUrl, { headers: getDownloadHeaders(requestUrl) }, (response) => {
@@ -388,6 +411,19 @@ export function downloadFile(
                 const MAX_REDIRECTS = 10;
 
                 const makeRequest = (requestUrl: string, redirectsLeft: number) => {
+                    let parsed: URL;
+                    try {
+                        parsed = new URL(requestUrl);
+                    } catch {
+                        reject(new Error("URL de descarga inválida"));
+                        return;
+                    }
+
+                    if (isPrivateHostname(parsed.hostname)) {
+                        reject(new Error("URL no permitida (SSRF detectado)"));
+                        return;
+                    }
+
                     const proto = requestUrl.startsWith("https") ? https : http;
                     const reqHeaders = { ...getDownloadHeaders(requestUrl), ...customHeaders };
 
