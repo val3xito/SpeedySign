@@ -7,6 +7,7 @@
 [![Cloudflare](https://img.shields.io/badge/Cloudflare-Proxy-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](https://www.cloudflare.com/)
 [![Telegram](https://img.shields.io/badge/Telegram-Community-26A69A?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/speedysign)
 [![Reddit](https://img.shields.io/badge/Reddit-r%2FSpeedySign-FF4500?style=for-the-badge&logo=reddit&logoColor=white)](https://www.reddit.com/r/SpeedySign/)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Donate-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/val3xito)
 
 > **SpeedySign** es una plataforma Full-Stack (PWA Web + Servidor de Firmas Node.js) que permite firmar e instalar archivos IPA de iOS/iPadOS directamente desde tu dispositivo, sin necesidad de ordenador, de forma rápida, segura y completamente autónoma.
 
@@ -105,6 +106,16 @@ npm run dev
 El proyecto incluye un `Dockerfile` optimizado en la raíz. El proceso de construcción de Docker compilará automáticamente **zsign** y **arksign** desde sus fuentes, construirá la aplicación PWA y configurará el servidor de producción.
 
 Solo necesitas conectar tu repositorio a Render o a tu VPS mediante Coolify.
+
+---
+
+## ☕ Apoya el Proyecto
+
+Si te gusta SpeedySign y quieres ayudar a mantener los servidores de firma activos y a máxima velocidad, puedes invitarme a un café en Ko-fi:
+
+[![Apoyar en Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/val3xito)
+
+¡Cualquier apoyo es sumamente bienvenido y ayuda directamente a costear el servidor de firmas!
 
 ---
 
