@@ -69,8 +69,8 @@ const app = express();
 // Compresión de respuestas HTTP para optimizar rendimiento (Lighthouse)
 app.use(compression());
 
-// Confiar en el proxy de Render para obtener la IP real del cliente.
-// Sin esto, todos los usuarios comparten la IP del load balancer y el rate limiter los bloquea juntos.
+// Confiar en el proxy (Coolify/Nginx/etc.) para obtener la IP real del cliente.
+// Sin esto, todos los usuarios comparten la IP del balanceador de carga y el rate limiter los bloquea juntos.
 app.set("trust proxy", 1);
 
 // ── Helmet (cabeceras de seguridad) ───────────────────────────────────────────
@@ -114,13 +114,11 @@ app.use(helmet({
 
 // ── CORS ───────────────────────────────────────────────────────────────────────
 // En producción: solo orígenes en ALLOWED_ORIGINS (env var, CSV).
-// Si ALLOWED_ORIGINS está vacío, se usa RENDER_EXTERNAL_URL como fallback automático
-// (Render inyecta esta variable con la URL pública del servicio).
 // En desarrollo: todos los orígenes aceptados para facilitar el trabajo local.
 // Las peticiones sin Origin (mismo origen, Postman, CLI) siempre se permiten.
 //
-// SEGURIDAD: fail-closed en producción — si no hay lista configurada ni variable
-// de Render, se rechaza cualquier petición cross-origin para prevenir CSRF.
+// SEGURIDAD: fail-closed en producción — si no hay lista configurada,
+// se rechaza cualquier petición cross-origin para prevenir CSRF.
 
 const normalizeOrigin = (o: string) => o.trim().replace(/\/+$/, "");
 
@@ -130,18 +128,11 @@ const ALLOWED_ORIGINS = ALLOWED_ORIGINS_RAW
     .map(normalizeOrigin)
     .filter(Boolean);
 
-// Fallback automático en Render: RENDER_EXTERNAL_URL = "https://speedysign.onrender.com"
-const RENDER_ORIGIN = process.env.RENDER_EXTERNAL_URL
-    ? normalizeOrigin(process.env.RENDER_EXTERNAL_URL)
-    : null;
-
-// Lista efectiva: ALLOWED_ORIGINS explícito, o la URL de Render, o vacía
-const EFFECTIVE_ORIGINS: string[] = ALLOWED_ORIGINS.length > 0
-    ? ALLOWED_ORIGINS
-    : (RENDER_ORIGIN ? [RENDER_ORIGIN] : []);
+// Lista efectiva de orígenes permitidos
+const EFFECTIVE_ORIGINS: string[] = ALLOWED_ORIGINS;
 
 if (IS_PRODUCTION && EFFECTIVE_ORIGINS.length === 0) {
-    console.warn("[SpeedySign] ⚠️  CORS: ALLOWED_ORIGINS no configurado y RENDER_EXTERNAL_URL no disponible.");
+    console.warn("[SpeedySign] ⚠️  CORS: ALLOWED_ORIGINS no configurado en producción.");
     console.warn("[SpeedySign] ⚠️  Las peticiones cross-origin serán rechazadas. Configura ALLOWED_ORIGINS en tu entorno de producción.");
 } else if (IS_PRODUCTION) {
     console.log(`[SpeedySign] 🔒 CORS permitido para: ${EFFECTIVE_ORIGINS.join(", ")}`);

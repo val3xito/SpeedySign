@@ -166,7 +166,7 @@ export async function cleanupDownload(uri: string): Promise<void> {
 
 // ── URL del backend de firma ──────────────────────────────────────────────
 // Usa URLs relativas: el frontend y la API se sirven desde el MISMO servidor.
-// Funciona tanto en localhost:3001 como en speedysign.onrender.com.
+// Funciona tanto en desarrollo local como en producción.
 
 /**
  * Devuelve la URL base del servidor de firma.
