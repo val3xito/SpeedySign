@@ -9,7 +9,7 @@ import fs from "fs";
 import os from "os";
 import { pipeline } from "stream/promises";
 import { Request } from "express";
-import { isPrivateHostname } from "./validation";
+import { isPrivateHostname, safeLookup } from "./validation";
 
 const PORT = process.env.PORT || 3001;
 export const MAX_DOWNLOAD_SIZE = parseInt(process.env.MAX_DOWNLOAD_SIZE || "524288000", 10); // 500 MB por defecto
@@ -171,7 +171,7 @@ export function resolveGoogleDriveDownload(fileId: string): Promise<GoogleDriveR
                 reqHeaders["Cookie"] = currentCookies.map(c => c.split(";")[0]).join("; ");
             }
 
-            const req = https.get(currentUrl, { headers: reqHeaders }, (res) => {
+            const req = https.get(currentUrl, { headers: reqHeaders, lookup: safeLookup }, (res) => {
                 const statusCode = res.statusCode || 200;
 
                 // Seguir redirect
@@ -316,7 +316,7 @@ export async function resolveUrlInfo(url: string): Promise<{ filename: string | 
 
             const proto = requestUrl.startsWith("https") ? https : http;
 
-            const req = proto.get(requestUrl, { headers: getDownloadHeaders(requestUrl) }, (response) => {
+            const req = proto.get(requestUrl, { headers: getDownloadHeaders(requestUrl), lookup: safeLookup }, (response) => {
                 // Manejar redirects
                 if (response.statusCode! >= 300 && response.statusCode! < 400 && response.headers.location) {
                     if (redirectsLeft <= 0) {
@@ -427,7 +427,7 @@ export function downloadFile(
                     const proto = requestUrl.startsWith("https") ? https : http;
                     const reqHeaders = { ...getDownloadHeaders(requestUrl), ...customHeaders };
 
-                    const req = proto.get(requestUrl, { headers: reqHeaders }, (response) => {
+                    const req = proto.get(requestUrl, { headers: reqHeaders, lookup: safeLookup }, (response) => {
                         if (response.statusCode! >= 300 && response.statusCode! < 400 && response.headers.location) {
                             if (redirectsLeft <= 0) {
                                 reject(new Error("Demasiados redirects al descargar el IPA"));
