@@ -93,11 +93,14 @@ COPY --from=signer-builder /tmp/zsign/bin/zsign /app/bin/zsign
 COPY --from=signer-builder /tmp/arksigning/build/arksigning /app/bin/arksign
 RUN chmod +x /app/bin/zsign /app/bin/arksign
 
-# Crear directorios necesarios
-RUN mkdir -p signed temp
+# Crear directorios necesarios y ajustar permisos para el usuario 'node'
+RUN mkdir -p signed temp && chown -R node:node signed temp
 
 # Configurar y exponer puerto
 ENV PORT=3001
 EXPOSE 3001
+
+# Cambiar al usuario no privilegiado 'node' para mitigar exploits/RCE
+USER node
 
 CMD ["node", "dist/index.js"]
