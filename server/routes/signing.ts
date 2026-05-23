@@ -300,6 +300,12 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
     if (customVersion && !isValidVersion(customVersion)) {
         return res.status(400).json({ error: "customVersion inválido (solo alfanuméricos, puntos y guiones, máx 30 chars)" });
     }
+    if (compressionLevel != null) {
+        const compLevel = parseInt(compressionLevel, 10);
+        if (isNaN(compLevel) || compLevel < 0 || compLevel > 6) {
+            return res.status(400).json({ error: "compressionLevel inválido (debe estar entre 0 y 6)" });
+        }
+    }
 
     // Límites de tamaño por tipo de archivo: multer solo tiene un límite global de 500 MB.
     // Los certificados y dylibs no deberían pesar cientos de MB; un tamaño inusual
