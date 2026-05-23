@@ -5,6 +5,8 @@
 [![Express](https://img.shields.io/badge/Express-Backend-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-Database-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
 [![Cloudflare](https://img.shields.io/badge/Cloudflare-Proxy-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](https://www.cloudflare.com/)
+[![Telegram](https://img.shields.io/badge/Telegram-Community-26A69A?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/speedysign)
+[![Reddit](https://img.shields.io/badge/Reddit-r%2FSpeedySign-FF4500?style=for-the-badge&logo=reddit&logoColor=white)](https://www.reddit.com/r/SpeedySign/)
 
 > **SpeedySign** es una plataforma Full-Stack (PWA Web + Servidor de Firmas Node.js) que permite firmar e instalar archivos IPA de iOS/iPadOS directamente desde tu dispositivo, sin necesidad de ordenador, de forma rápida, segura y completamente autónoma.
 
@@ -43,6 +45,15 @@ graph TD
   * Caché de estáticos inmutable para assets y desactivada para el index/manifest (PWA auto-actualizable).
   * Splash Screen dinámico (con animación de lluvia Matrix en Canvas) integrado con el estado de carga de la app React.
   * Interceptor de enlaces iOS Standalone para evitar que Safari rompa la experiencia de aplicación nativa.
+
+---
+
+## 👥 Comunidad
+
+Únete a nuestras comunidades oficiales para compartir repositorios, reportar errores y estar al tanto de las últimas novedades del proyecto:
+
+* 📱 **Telegram:** [Canal de SpeedySign](https://t.me/speedysign) - Encuentra listados de repositorios públicos, ayuda en directo y noticias.
+* 🤖 **Reddit:** [Comunidad r/SpeedySign](https://www.reddit.com/r/SpeedySign/) - Comparte guías, sugerencias de nuevas características y debates.
 
 ---
 
