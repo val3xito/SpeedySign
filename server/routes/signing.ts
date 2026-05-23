@@ -264,19 +264,17 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
         }
     };
 
-    // Cooldown de 3 minutos SOLO para subidas de IPAs personalizadas
-    if (ipaFile) {
-        const lastUpload = customUploadCooldowns.get(req.userId!) || 0;
-        const now = Date.now();
-        if (now - lastUpload < 3 * 60 * 1000) {
-            // Eliminar archivos que multer acaba de guardar antes de rechazar
-            [ipaFile, p12File, provisionFile, ...dylibFiles].forEach((uf: any) => {
-                if (uf?.path && fs.existsSync(uf.path)) try { fs.unlinkSync(uf.path); } catch { }
-            });
-            return res.status(429).json({ error: "Solo puedes subir un archivo .ipa desde tu dispositivo cada 3 minutos. Por favor, espera." });
-        }
-        customUploadCooldowns.set(req.userId!, now);
+    // Cooldown de 3 minutos para cualquier firma de IPA (por subida directa o descarga remota)
+    const lastUpload = customUploadCooldowns.get(req.userId!) || 0;
+    const now = Date.now();
+    if (now - lastUpload < 3 * 60 * 1000) {
+        // Eliminar archivos que multer acaba de guardar antes de rechazar
+        [ipaFile, p12File, provisionFile, ...dylibFiles].forEach((uf: any) => {
+            if (uf?.path && fs.existsSync(uf.path)) try { fs.unlinkSync(uf.path); } catch { }
+        });
+        return res.status(429).json({ error: "Solo puedes realizar una firma de aplicación cada 3 minutos. Por favor, espera." });
     }
+    customUploadCooldowns.set(req.userId!, now);
 
     if (!ipaUrl && !ipaFile) {
         return res.status(400).json({ error: "Se requiere ipaUrl o un ipaFile" });
