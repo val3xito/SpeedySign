@@ -108,9 +108,16 @@ Solo necesitas conectar tu repositorio a Render o a tu VPS mediante Coolify.
 
 ---
 
-## 📄 Términos y Descargo de Responsabilidad
+## 📄 Licencia y Descargo de Responsabilidad
 
-SpeedySign es una herramienta de software independiente creada con fines estrictamente educativos y de experimentación. 
-* El software no proporciona, aloja ni distribuye de manera predeterminada ningún tipo de archivo protegido por derechos de autor.
-* El usuario final asume la responsabilidad legal exclusiva sobre el origen y validez de los certificados de desarrollo (.p12) y de los archivos de aplicación (.ipa) que procese en la plataforma.
-* Las firmas temporales y certificados subidos se procesan bajo protocolos de anonimización absoluta y se destruyen de manera segura y definitiva del disco en un plazo de 3 minutos.
+Este proyecto está licenciado bajo la licencia **GPL-3.0**. Puedes ver todos los detalles en el archivo [LICENSE](file:///c:/Users/val3xito/Desktop/PROYECTS/speedysign/LICENSE). 
+
+Decidí publicar SpeedySign bajo esta licencia específica porque quería ofrecer una herramienta transparente y abierta relacionada con la investigación de firmas y la carga lateral (*sideloading*) de aplicaciones asociadas a certificados en iOS.
+
+Al contribuir a este proyecto, aceptas que tu código sea licenciado bajo la misma licencia **GPL-3.0** (incluyendo la aceptación de excepciones de licencia), asegurando que tu trabajo, como todas las demás contribuciones, se mantenga libremente accesible, auditable y de código abierto para siempre.
+
+### Descargo de Responsabilidad Legal
+SpeedySign es un entorno de trabajo independiente y limpio ("blank canvas") creado con fines de investigación, aprendizaje y experimentación personal.
+* **Sin contenidos protegidos:** El software no proporciona, aloja, enlaza ni distribuye de manera predeterminada ningún tipo de archivo protegido por derechos de autor, propiedad intelectual o marcas registradas.
+* **Responsabilidad del usuario:** El usuario asume de forma exclusiva toda responsabilidad legal por el uso que haga de la plataforma, incluyendo la legitimidad y propiedad de los certificados de desarrollo (`.p12`/`.mobileprovision`) y de los paquetes de aplicación (`.ipa`) que procese.
+* **Privacidad estricta:** Todo archivo procesado en el servidor temporal se borra físicamente de manera segura y definitiva en un plazo máximo de 3 minutos. No se conservan copias, registros de auditoría ni logs de archivos.
