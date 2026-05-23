@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "SpeedySign",
+    "slug": "speedysign",
+    "version": "1.1",
+    "platforms": [
+      "web"
+    ],
+    "web": {
+      "favicon": "./assets/logo-transparent.png",
+      "bundler": "metro",
+      "output": "single",
+      "shortName": "SpeedySign",
+      "name": "SpeedySign",
+      "description": "Herramienta PWA para firmar e instalar aplicaciones.",
+      "themeColor": "#0D0D0D",
+      "backgroundColor": "#0D0D0D",
+      "display": "standalone",
+      "orientation": "portrait"
+    },
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-localization"
+    ],
+    "extra": {
+      "router": {}
+    }
+  }
+}
