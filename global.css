@@ -1,0 +1,62 @@
+/* Directivas de Tailwind para NativeWind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@import 'sileo/dist/styles.css';
+
+/* ── Tipografía global: Inter como fuente principal en web ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', ui-monospace, monospace;
+
+    /* ── Paleta de colores SpeedySign ── */
+    --color-bg:        #080808;
+    --color-card:      #121212;
+    --color-border:    #1E1E1E;
+    --color-accent:    #E53935;
+    --color-accent-lt: #EF5350;
+    --color-danger:    #FF4D4D;
+    --color-warning:   #F59E0B;
+    --color-text:      #FFFFFF;
+    --color-secondary: #808080;
+
+    /* ── Espaciado y radios ── */
+    --radius-card:   16px;
+    --radius-btn:    12px;
+    --radius-pill:   999px;
+    --radius-input:  12px;
+}
+
+/* Aplicar Inter a todos los elementos de texto web */
+body, #root, [data-reactroot] {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Forzar color rojo para iconos personalizados dentro de toasts de error */
+li[data-sileo-toast][data-type="error"] .custom-sileo-icon>svg,
+li[data-sileo-toast][data-type="error"] .custom-sileo-icon>path {
+    stroke: #FF3B30 !important;
+    fill: #FF3B30 !important;
+    color: #FF3B30 !important;
+}
+
+/* Fix: force pointer-events on swipeable action containers (gesture-handler web) */
+[data-testid="swipeable-actions-left"] *,
+[data-testid="swipeable-actions-right"] * {
+    pointer-events: auto !important;
+}
+
+/* Fix: evitar zoom al tocar inputs en iOS/mobile — iOS solo hace zoom si font-size < 16px */
+input, textarea, select {
+    font-size: 16px !important;
+    touch-action: manipulation;
+}
+
+/* Fix: evitar doble-tap zoom en toda la web */
+* {
+    touch-action: manipulation;
+}

@@ -1,0 +1,10 @@
+node_modules
+server/node_modules
+server/signed/*
+server/temp/*
+server/tunnel.log
+server/bin/*.exe
+dist
+.expo
+.git
+*.md

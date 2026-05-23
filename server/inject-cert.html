@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><title>SpeedySign - Inject Test Certificate</title></head>
+<body>
+<script>
+  const cert = [{
+    id: "test-cert-1",
+    name: "Iosrocket Distribution",
+    type: "distribution",
+    teamId: "ABCDEF1234",
+    teamName: "Iosrocket Team",
+    serialNumber: "ABC123DEF456",
+    expirationDate: "2027-12-31T23:59:59.000Z",
+    importedAt: new Date().toISOString(),
+    isValid: true,
+    p12FileName: "Iosrocket.p12",
+    provisionFileName: "Iosrocket.mobileprovision"
+  }];
+  localStorage.setItem("@vaultsign/certificates", JSON.stringify(cert));
+  document.body.innerHTML = "<h1>Certificate injected! Redirecting...</h1>";
+  setTimeout(() => { window.location.href = "http://localhost:8081"; }, 1000);
+</script>
+</body>
+</html>

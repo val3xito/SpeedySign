@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+
+<head>
+  <meta charset="utf-8" />
+  <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, shrink-to-fit=no" />
+  <title>SpeedySign - Firma e instala aplicaciones iOS</title>
+  <meta name="description" content="Firma tus archivos IPA con tu propio certificado directamente desde tu dispositivo de forma rápida y segura." />
+
+  <!-- OpenGraph / Facebook Meta Tags -->
+  <meta property="og:title" content="SpeedySign - Firma e instala aplicaciones iOS" />
+  <meta property="og:description" content="Firma tus archivos IPA con tu propio certificado directamente desde tu dispositivo de forma rápida y segura." />
+  <meta property="og:image" content="https://speedysign.val3xito.com/assets/logo-transparent.png" />
+  <meta property="og:url" content="https://speedysign.val3xito.com" />
+  <meta property="og:type" content="website" />
+
+  <!-- Twitter Meta Tags -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="SpeedySign - Firma e instala aplicaciones iOS" />
+  <meta name="twitter:description" content="Firma tus archivos IPA con tu propio certificado directamente desde tu dispositivo de forma rápida y segura." />
+  <meta name="twitter:image" content="https://speedysign.val3xito.com/assets/logo-transparent.png" />
+
+  <!-- ═══ PWA / iOS Safari Standalone Mode ═══ -->
+  <!-- Web App Manifest: define scope "/" para que iOS mantenga toda
+       la navegación dentro del modo standalone (fix iOS 16.4+) -->
+  <link rel="manifest" href="/manifest.json" />
+  <!-- Activa el modo app nativa en iOS al guardar en pantalla de inicio -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <!-- Estilo de la barra de estado: black-translucent ocupa toda la pantalla como app nativa -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <!-- Nombre que aparece bajo el icono en la pantalla de inicio -->
+  <meta name="apple-mobile-web-app-title" content="SpeedySign" />
+  <!-- Icono para la pantalla de inicio de iOS (Apple Touch Icon) -->
+  <link rel="apple-touch-icon" href="/assets/logo-transparent.png" />
+  <!-- Color de la barra de estado en Android PWA -->
+  <meta name="theme-color" content="#0D0D0D" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;700;900&display=swap"
+    rel="stylesheet" />
+
+  <!-- Base styles -->
+  <style id="expo-reset">
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      overflow: hidden;
+      background: #0a0a0f;
+    }
+
+    #root {
+      display: flex;
+      height: 100%;
+      flex: 1;
+    }
+  </style>
+
+  <!-- ═══ SPLASH SCREEN ═══ -->
+  <style>
+    #ss-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0f;
+      pointer-events: none;
+      transition: opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #ss-splash.hide {
+      opacity: 0;
+    }
+
+    /* ── Scanlines hacker overlay ── */
+    .ss-scanlines {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.22) 50%
+      );
+      background-size: 100% 4px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    /* ── Glitch text animation ── */
+    @keyframes glitch {
+      0% { text-shadow: 2px -1px 0 rgba(255, 59, 59, 0.35), -1px 1px 0 rgba(255, 255, 255, 0.3); }
+      20% { text-shadow: -2px 1.5px 0 rgba(255, 59, 59, 0.4), 1.5px -1.5px 0 rgba(255, 255, 255, 0.35); }
+      40% { text-shadow: 1px -1.5px 0 rgba(255, 59, 59, 0.35), -1.5px 1px 0 rgba(0, 0, 0, 0.3); }
+      60% { text-shadow: -1.5px 1px 0 rgba(255, 59, 59, 0.4), 1px -1px 0 rgba(255, 255, 255, 0.35); }
+      80% { text-shadow: 2px -1px 0 rgba(255, 59, 59, 0.35), -1px 1px 0 rgba(0, 0, 0, 0.3); }
+      100% { text-shadow: 2px -1.5px 0 rgba(255, 59, 59, 0.4), -1.5px 1.5px 0 rgba(255, 255, 255, 0.35); }
+    }
+
+    /* ── Cursor parpadeante terminal ── */
+    @keyframes ss-blink {
+      50% { opacity: 0; }
+    }
+
+    .ss-cursor {
+      animation: ss-blink 0.8s infinite;
+      color: #ff3b3b;
+      font-weight: bold;
+    }
+
+    /* ── Logo contenedor ── */
+    .ss-logo-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* ── Icono/símbolo ── */
+    .ss-icon {
+      width: 160px;
+      height: 160px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: ss-icon-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      animation-delay: 0.1s;
+      position: relative;
+    }
+
+    .ss-icon-img {
+      width: 110px;
+      height: 110px;
+      padding: 25px;
+      box-sizing: content-box;
+      object-fit: contain;
+      mix-blend-mode: screen;
+      filter: drop-shadow(0 0 20px rgba(255, 59, 59, 0.8));
+    }
+
+    @keyframes ss-icon-in {
+      from {
+        opacity: 0;
+        transform: scale(0.4) rotate(-10deg);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+      }
+    }
+
+    .ss-title {
+      font-family: 'Inter', -apple-system, sans-serif;
+      font-weight: 900;
+      font-size: clamp(36px, 8vw, 72px);
+      letter-spacing: -0.04em;
+      line-height: 1;
+      display: flex;
+      gap: 0;
+      overflow: hidden;
+      animation: glitch 4s ease-in-out infinite;
+    }
+
+    .ss-letter {
+      display: inline-block;
+      color: transparent;
+      background: linear-gradient(135deg, #ffffff 0%, #cccccc 60%, #888888 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      animation: ss-letter-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      transform-origin: bottom center;
+    }
+
+    /* Acento rojo en "SPEEDY" */
+    .ss-letter.red {
+      background: linear-gradient(135deg, #ff5555 0%, #ff1744 50%, #c62828 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+
+    @keyframes ss-letter-in {
+      from {
+        opacity: 0;
+        transform: translateY(60px) rotateX(-40deg) scale(0.8);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) rotateX(0deg) scale(1);
+      }
+    }
+
+    /* ── Línea tagline ── */
+    .ss-tagline {
+      font-family: 'Inter', sans-serif;
+      font-weight: 300;
+      font-size: clamp(11px, 2vw, 14px);
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.35);
+      animation: ss-fade-up 0.6s ease both;
+      animation-delay: 1.1s;
+    }
+
+    @keyframes ss-fade-up {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ── Barra de progreso ── */
+    .ss-progress-wrap {
+      width: clamp(180px, 40vw, 280px);
+      height: 2px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
+      overflow: hidden;
+      animation: ss-fade-up 0.4s ease both;
+      animation-delay: 0.9s;
+    }
+
+    .ss-progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #ff3b3b, #ff6b6b);
+      border-radius: 2px;
+      box-shadow: 0 0 8px rgba(255, 60, 60, 0.8);
+      transition: width 0.15s ease;
+    }
+
+    /* ── Glow ambiental de fondo ── */
+    .ss-glow {
+      position: absolute;
+      width: 60vmax;
+      height: 60vmax;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 40, 40, 0.12) 0%, transparent 65%);
+      pointer-events: none;
+      animation: ss-pulse 3s ease-in-out infinite;
+    }
+
+    @keyframes ss-pulse {
+
+      0%,
+      100% {
+        transform: scale(1);
+        opacity: 0.8;
+      }
+
+      50% {
+        transform: scale(1.08);
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <noscript>You need to enable JavaScript to run this app.</noscript>
+
+  <!-- ═══ SPLASH HTML ═══ -->
+  <div id="ss-splash" aria-hidden="true">
+    <!-- Glow ambiental -->
+    <div class="ss-glow"></div>
+
+    <!-- Canvas de Matrix Rain -->
+    <canvas id="ss-matrix" style="position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: 0.35;"></canvas>
+
+    <!-- Scanlines overlay -->
+    <div class="ss-scanlines"></div>
+
+    <!-- Logo + texto -->
+    <div class="ss-logo-wrap">
+      <!-- Icono -->
+      <div class="ss-icon">
+        <img src="assets/logo-transparent.png" class="ss-icon-img" alt="SpeedySign Logo" />
+      </div>
+
+      <!-- Letras animadas -->
+      <div class="ss-title" id="ss-title"></div>
+
+      <!-- Tagline terminal -->
+      <div id="ss-terminal" style="font-family: monospace; color: #ff3b3b; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; height: 16px; opacity: 0.85; margin-top: 5px;">
+        <span id="ss-log-text">> SYSTEM BOOTING...</span><span class="ss-cursor">█</span>
+      </div>
+
+      <!-- Barra de progreso -->
+      <div class="ss-progress-wrap">
+        <div class="ss-progress-bar" id="ss-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Root de React/Expo -->
+  <div id="root"></div>
+
+  <script>
+    (function () {
+      // ── Lluvia de Código Matrix ──
+      var canvas = document.getElementById('ss-matrix');
+      var ctx = canvas.getContext('2d');
+      var fontSize = 14;
+      var columns = 0;
+      var drops = [];
+      var chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz⚡".split("");
+
+      function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        columns = Math.floor(canvas.width / fontSize);
+        drops = [];
+        for (var x = 0; x < columns; x++) {
+          drops[x] = Math.random() * -100;
+        }
+      }
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas();
+
+      function drawMatrix() {
+        ctx.fillStyle = 'rgba(10, 10, 15, 0.08)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.font = fontSize + 'px monospace';
+        for (var i = 0; i < drops.length; i++) {
+          var text = chars[Math.floor(Math.random() * chars.length)];
+          var x = i * fontSize;
+          var y = drops[i] * fontSize;
+
+          // Paleta de colores Hacker / SpeedySign (tonos rojos y blancos)
+          var rand = Math.random();
+          if (rand > 0.98) {
+            ctx.fillStyle = '#ffffff'; // Cabeza brillante blanca
+          } else if (rand > 0.90) {
+            ctx.fillStyle = '#ff8a80'; // Cabeza secundaria rosada/roja clara
+          } else {
+            ctx.fillStyle = 'rgba(255, 23, 68, 0.35)'; // Cuerpo de lluvia rojo difuso
+          }
+
+          ctx.fillText(text, x, y);
+
+          if (y > canvas.height && Math.random() > 0.975) {
+            drops[i] = 0;
+          }
+          drops[i]++;
+        }
+      }
+      var matrixInterval = setInterval(drawMatrix, 33);
+
+      // ── Generar letras SPEEDYSIGN con stagger ──
+      var word = 'SPEEDYSIGN';
+      var redCount = 6; // "SPEEDY" en rojo
+      var titleEl = document.getElementById('ss-title');
+      for (var i = 0; i < word.length; i++) {
+        var span = document.createElement('span');
+        span.className = 'ss-letter' + (i < redCount ? ' red' : '');
+        span.textContent = word[i];
+        span.style.animationDelay = (0.25 + i * 0.055) + 's';
+        titleEl.appendChild(span);
+      }
+
+      // ── Mensajes de consola del terminal ──
+      var logText = document.getElementById('ss-log-text');
+      var logMessages = [
+        { limit: 20, text: '> INITIALIZING SECURE BOOT...' },
+        { limit: 45, text: '> DECRYPTING ENVIRONMENT KEYS...' },
+        { limit: 70, text: '> VERIFYING CERTIFICATES & LOGS...' },
+        { limit: 90, text: '> INJECTING ACTIVE RUNTIME...' },
+        { limit: 100, text: '> APP READY / INJECTING CONTEXT...' }
+      ];
+
+      function updateLog(percent) {
+        if (!logText) return;
+        var msg = logMessages[0].text;
+        for (var i = 0; i < logMessages.length; i++) {
+          if (percent >= logMessages[i].limit) {
+            msg = logMessages[i].text;
+          }
+        }
+        logText.textContent = msg;
+      }
+
+      // ── Simular barra de progreso ──
+      var bar = document.getElementById('ss-bar');
+      var pct = 0;
+      var startTime = Date.now();
+      var progressInterval = setInterval(function () {
+        pct += pct < 75 ? (Math.random() * 3 + 2) : (Math.random() * 1.5 + 0.3);
+        if (pct > 92) pct = 92;
+        bar.style.width = pct + '%';
+        updateLog(pct);
+      }, 120);
+
+      // ── Función que dispara el cierre del splash ──
+      window.__hideSplash = function () {
+        var elapsed = Date.now() - startTime;
+        var remaining = Math.max(0, 1000 - elapsed); // Reducido a 1000ms para mejorar LCP/FCP en Lighthouse
+
+        setTimeout(function () {
+          clearInterval(progressInterval);
+          clearInterval(matrixInterval);
+          window.removeEventListener('resize', resizeCanvas);
+          bar.style.width = '100%';
+          if (logText) logText.textContent = '> SESSION VERIFIED / LAUNCHING...';
+          setTimeout(function () {
+            var splash = document.getElementById('ss-splash');
+            if (!splash) return;
+            splash.classList.add('hide');
+            setTimeout(function () {
+              splash.style.display = 'none';
+            }, 750);
+          }, 350);
+        }, remaining);
+      };
+
+      // Ocultar de inmediato cuando React emite que la app está lista
+      window.addEventListener("speedysign:ready", function () {
+        if (window.__hideSplash) window.__hideSplash();
+      });
+
+      // ── Safety net ──
+      setTimeout(function () {
+        if (window.__hideSplash) window.__hideSplash();
+      }, 5500);
+    })();
+  </script>
+  <!-- ═══ iOS Standalone PWA — Interceptor de links ═══ -->
+  <!-- Evita que cualquier <a href> interno abra Safari cuando la app -->
+  <!-- está instalada en la pantalla de inicio (modo standalone). -->
+  <script>
+    (function () {
+      // Solo actuar en modo standalone de iOS
+      if (!window.navigator.standalone) return;
+
+      var origin = window.location.protocol + '//' + window.location.hostname;
+
+      document.addEventListener('click', function (e) {
+        // Subir por el árbol del DOM hasta encontrar un <a>
+        var node = e.target;
+        while (node) {
+          if (node.nodeName === 'A') break;
+          node = node.parentNode;
+        }
+        if (!node || !node.href) return;
+
+        var href = node.href;
+
+        // Solo interceptar links del mismo origen (no externos como t.me, ko-fi…)
+        if (href.indexOf(origin) !== 0) return;
+
+        // Prevenir la navegación nativa que rompería standalone
+        e.preventDefault();
+
+        // Navegar usando history API para mantenerse en la PWA
+        if (href !== window.location.href) {
+          window.history.pushState(null, '', href);
+          // Disparar popstate para que React Router / Expo Router lo detecte
+          window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+        }
+      }, true);
+    })();
+  </script>
+</body>
+
+</html>

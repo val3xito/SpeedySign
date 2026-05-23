@@ -1,0 +1,6 @@
+node_modules
+npm-debug.log
+signed/*
+temp/*
+tunnel.log
+*.exe
