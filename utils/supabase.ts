@@ -8,6 +8,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 
+import { Platform } from 'react-native';
+
 // ── Configuración (desde variables de entorno) ────────────────────────────
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -26,6 +28,102 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 /**
+ * Obtiene un token de verificación de Cloudflare Turnstile de forma invisible en la web.
+ */
+async function getTurnstileToken(): Promise<string | undefined> {
+    if (Platform.OS !== 'web') {
+        return undefined;
+    }
+
+    const siteKey = process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY;
+    if (!siteKey) {
+        console.warn('⚠️ EXPO_PUBLIC_TURNSTILE_SITE_KEY no está definida en las variables de entorno.');
+        return undefined;
+    }
+
+    return new Promise((resolve) => {
+        // Cargar el script de Turnstile si no está ya cargado
+        const scriptId = 'cloudflare-turnstile-script';
+        let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+        
+        const initTurnstile = () => {
+            const turnstile = (window as any).turnstile;
+            if (!turnstile) {
+                resolve(undefined);
+                return;
+            }
+
+            // Crear un contenedor invisible para renderizar el widget
+            const container = document.createElement('div');
+            container.style.position = 'absolute';
+            container.style.top = '-9999px';
+            container.style.left = '-9999px';
+            document.body.appendChild(container);
+
+            try {
+                const widgetId = turnstile.render(container, {
+                    sitekey: siteKey,
+                    size: 'invisible',
+                    callback: (token: string) => {
+                        // Desmontar el widget y remover el contenedor
+                        try {
+                            turnstile.remove(widgetId);
+                        } catch (e) {
+                            console.error('Error al limpiar Turnstile widget:', e);
+                        }
+                        document.body.removeChild(container);
+                        resolve(token);
+                    },
+                    'error-callback': (err: any) => {
+                        console.error('Error en Cloudflare Turnstile:', err);
+                        document.body.removeChild(container);
+                        resolve(undefined);
+                    }
+                });
+            } catch (err) {
+                console.error('Excepción al renderizar Turnstile:', err);
+                if (document.body.contains(container)) {
+                    document.body.removeChild(container);
+                }
+                resolve(undefined);
+            }
+        };
+
+        if (!(window as any).turnstile) {
+            if (!script) {
+                script = document.createElement('script');
+                script.id = scriptId;
+                script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+                script.async = true;
+                script.defer = true;
+                script.onload = () => {
+                    const checkInterval = setInterval(() => {
+                        if ((window as any).turnstile) {
+                            clearInterval(checkInterval);
+                            initTurnstile();
+                        }
+                    }, 50);
+                };
+                script.onerror = () => {
+                    console.error('No se pudo cargar el script de Cloudflare Turnstile');
+                    resolve(undefined);
+                };
+                document.head.appendChild(script);
+            } else {
+                const checkInterval = setInterval(() => {
+                    if ((window as any).turnstile) {
+                        clearInterval(checkInterval);
+                        initTurnstile();
+                    }
+                }, 50);
+            }
+        } else {
+            initTurnstile();
+        }
+    });
+}
+
+/**
  * Inicia sesión anónima automáticamente si no hay sesión activa.
  * Cada dispositivo recibe un ID único sin necesidad de registro manual.
  * @returns El user_id del usuario (nuevo o existente)
@@ -37,8 +135,12 @@ export async function ensureAnonymousAuth(): Promise<string> {
         return session.user.id;
     }
 
-    // Crear sesión anónima
-    const { data, error } = await supabase.auth.signInAnonymously();
+    // Obtener el token de Turnstile de forma invisible
+    const captchaToken = await getTurnstileToken();
+
+    // Crear sesión anónima con el token si está disponible
+    const signInOptions = captchaToken ? { options: { captchaToken } } : undefined;
+    const { data, error } = await supabase.auth.signInAnonymously(signInOptions);
 
     if (error) {
         throw new Error(`Error de autenticación: ${error.message}`);
