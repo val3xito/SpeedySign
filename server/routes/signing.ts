@@ -22,7 +22,7 @@ import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { executeSign } from "../services/signingService";
 import { inspectIPA, modifyIPA } from "../services/ipaService";
 import { checkCertificateOCSP } from "../services/ocspService";
@@ -94,7 +94,7 @@ export const signLimiter = rateLimit({
     max: 30,                   // 30 firmas por hora (muy generoso, solo para evitar spam masivo)
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req: any) => (req as AuthRequest).userId || req.ip || "unknown",
+    keyGenerator: (req: any) => (req as AuthRequest).userId || ipKeyGenerator(req.ip || "unknown"),
     message: { error: "Has superado el límite de 30 firmas por hora. Intenta de nuevo más tarde." },
 });
 

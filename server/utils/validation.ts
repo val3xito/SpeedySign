@@ -55,7 +55,11 @@ const PRIVATE_IP_PATTERNS: RegExp[] = [
  */
 export function isPrivateHostname(hostname: string): boolean {
     if (!hostname || typeof hostname !== "string") return true; // fail-closed
-    return PRIVATE_IP_PATTERNS.some((re) => re.test(hostname.toLowerCase()));
+    const normalized = hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1");
+    if (normalized.startsWith("::ffff:")) {
+        return isPrivateHostname(normalized.slice("::ffff:".length));
+    }
+    return PRIVATE_IP_PATTERNS.some((re) => re.test(normalized));
 }
 
 /**
@@ -85,7 +89,7 @@ export function isValidDownloadUrl(url: string): boolean {
     const hostname = parsed.hostname;
 
     // Verificar contra rangos privados
-    if (PRIVATE_IP_PATTERNS.some((re) => re.test(hostname))) return false;
+    if (isPrivateHostname(hostname)) return false;
 
     return true;
 }
@@ -200,4 +204,3 @@ export function safeLookup(
         callback(null, address, family);
     });
 }
-
