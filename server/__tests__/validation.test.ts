@@ -3,7 +3,7 @@
  * Cubre: sanitizeFilename, isValidDownloadUrl, isValidBundleId, isValidAppName
  */
 
-import { sanitizeFilename, isValidDownloadUrl, isValidBundleId, isValidAppName } from "../utils/validation";
+import { sanitizeFilename, isValidDownloadUrl, isValidBundleId, isValidAppName, isPrivateHostname } from "../utils/validation";
 
 // ── sanitizeFilename ──────────────────────────────────────────────────────────
 
@@ -78,6 +78,12 @@ describe("isValidDownloadUrl", () => {
         expect(isValidDownloadUrl("javascript:alert(1)")).toBe(false);
         expect(isValidDownloadUrl("file:///etc/passwd")).toBe(false);
         expect(isValidDownloadUrl("data:text/html,<h1>xss</h1>")).toBe(false);
+    });
+
+    it("permite IPv4 publico cuando DNS lo devuelve como IPv6-mapped", () => {
+        expect(isPrivateHostname("::ffff:8.8.8.8")).toBe(false);
+        expect(isPrivateHostname("::ffff:10.0.0.1")).toBe(true);
+        expect(isPrivateHostname("::ffff:169.254.169.254")).toBe(true);
     });
 });
 
