@@ -65,6 +65,7 @@ FROM node:20-slim
 RUN apt-get update && apt-get install -y \
     libssl3 \
     libminizip1 \
+    openssl \
     zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
