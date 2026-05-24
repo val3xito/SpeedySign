@@ -391,7 +391,8 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
         return res.status(429).json({ error: "Ya tienes una instalación en proceso. Por favor, espera a que termine." });
     }
 
-    // Cooldown de 3 minutos para cualquier firma de IPA (por subida directa o descarga remota)
+    // Cooldown de 3 minutos tras una firma completada correctamente.
+    // No se marca aquí: un fallo de descarga/firma no debe bloquear el siguiente intento.
     if (IS_PRODUCTION) {
         const lastUpload = customUploadCooldowns.get(userId) || 0;
         const now = Date.now();
@@ -404,7 +405,6 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
             });
             return res.status(429).json({ error: "Solo puedes realizar una firma de aplicación cada 3 minutos. Por favor, espera." });
         }
-        customUploadCooldowns.set(userId, now);
     }
 
     activeUserSignings.add(userId);
@@ -540,6 +540,9 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
         // Incrementar el uso diario al tener éxito
         userDaily.count++;
         dailySignatures.set(userId, userDaily);
+        if (IS_PRODUCTION) {
+            customUploadCooldowns.set(userId, Date.now());
+        }
 
         if (jobId) { emitProgress(jobId, { phase: "done" }); cleanupJob(jobId); }
 
