@@ -145,6 +145,7 @@
     "signerAuto": "Auto (recommended)",
     "signerZsign": "zsign",
     "signerArksign": "ArkSign",
+    "signerSpeedysigner": "SpeedySigner",
     "signerLabel": "⚙️ Signer: {{mode}}",
     "signingProgress": "Signing Progress",
     "completed": "Completed",

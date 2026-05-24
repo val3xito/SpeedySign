@@ -1,0 +1,12 @@
+[package]
+name = "speedysigner-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+speedysigner-core = { path = "../speedysigner-core" }
+clap = { version = "4.4.18", features = ["derive"] }
+memmap2 = "0.9.4"
+rayon = "1.8.1"
+anyhow = "1.0.79"
+zsign_rs = "0.1.1"

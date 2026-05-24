@@ -95,14 +95,14 @@ export default function AppDetailScreen() {
             steps: typeof updater === "function" ? updater(p.steps) : updater,
         }));
 
-    const [signerPreference, setSignerPreference] = useState<"auto" | "zsign" | "arksign">("auto");
+    const [signerPreference, setSignerPreference] = useState<"auto" | "zsign" | "arksign" | "speedysigner">("auto");
     // Opciones de personalización pre-firma
     const [ipaOptions, setIpaOptions] = useState<IpaCustomOptions>(defaultIpaOptions());
 
     React.useEffect(() => {
         AsyncStorage.getItem('signer_pref').then((val) => {
-            if (val === "auto" || val === "zsign" || val === "arksign") {
-                setSignerPreference(val);
+            if (val === "auto" || val === "zsign" || val === "arksign" || val === "speedysigner") {
+                setSignerPreference(val as any);
             }
         });
     }, []);
@@ -862,7 +862,7 @@ export default function AppDetailScreen() {
                         <Pressable 
                             style={{marginTop: 15, alignSelf: 'center'}}
                             onPress={() => {
-                                const signers: Array<"auto" | "zsign" | "arksign"> = ["auto", "zsign", "arksign"];
+                                const signers: Array<"auto" | "zsign" | "arksign" | "speedysigner"> = ["auto", "zsign", "arksign", "speedysigner"];
                                 const nextIdx = (signers.indexOf(signerPreference) + 1) % signers.length;
                                 const nextVal = signers[nextIdx];
                                 setSignerPreference(nextVal);
@@ -872,7 +872,8 @@ export default function AppDetailScreen() {
                             <Text style={{color: colors.textSecondary, fontSize: 13, textAlign: 'center'}}>
                                 ⚙️ {t("appDetail.signerLabel", { mode: 
                                     signerPreference === 'auto' ? t("appDetail.signerAuto", "Automático") : 
-                                    signerPreference === 'zsign' ? t("appDetail.signerZsign", "zsign") : t("appDetail.signerArksign", "ArkSign")
+                                    signerPreference === 'zsign' ? t("appDetail.signerZsign", "zsign") : 
+                                    signerPreference === 'arksign' ? t("appDetail.signerArksign", "ArkSign") : t("appDetail.signerSpeedysigner", "SpeedySigner")
                                 }).replace('⚙️ ', '')}
                             </Text>
                         </Pressable>
