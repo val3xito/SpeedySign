@@ -191,16 +191,26 @@ export function isValidDylibFile(filePath: string): boolean {
 export function safeLookup(
     hostname: string,
     options: any,
-    callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
+    callback: (err: NodeJS.ErrnoException | null, address: string | any[], family?: number) => void
 ): void {
     const dns = require("dns") as typeof import("dns");
     dns.lookup(hostname, options, (err, address, family) => {
         if (err) {
             return callback(err, address, family);
         }
-        if (isPrivateHostname(address)) {
-            return callback(new Error("SSRF: Acceso a IP privada/reservada bloqueado"), "", family);
+        
+        if (Array.isArray(address)) {
+            for (const item of address) {
+                if (isPrivateHostname(item.address)) {
+                    return callback(new Error("SSRF: Acceso a IP privada/reservada bloqueado"), "", item.family);
+                }
+            }
+        } else {
+            if (isPrivateHostname(address)) {
+                return callback(new Error("SSRF: Acceso a IP privada/reservada bloqueado"), "", family);
+            }
         }
+        
         callback(null, address, family);
     });
 }
