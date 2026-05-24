@@ -28,6 +28,7 @@ const SERVER_ROOT  = (IS_PRODUCTION || __dirname.includes('dist'))
 const BIN_DIR      = path.join(SERVER_ROOT, 'bin');
 const ZSIGN_PATH   = path.join(BIN_DIR, process.platform === 'win32' ? 'zsign.exe'   : 'zsign');
 const ARKSIGN_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'arksign.exe' : 'arksign');
+const SENSITIVE_ARG_FLAGS = new Set(['-k', '-p', '-m', '-o', '-e', '-l', '-w']);
 
 export type SignerType = 'auto' | 'zsign' | 'arksign';
 
@@ -121,6 +122,7 @@ async function convertP12ToLegacy(p12Path: string, password: string): Promise<st
             '-out',      pemPath,
         ], { timeout: 5000 }, (err1) => {
             if (err1) {
+                console.warn(`  [SpeedySign] No se pudo convertir el P12 a legacy: ${err1.code || err1.message}`);
                 // openssl no disponible o P12 ya es legacy — usar original
                 return resolve(p12Path);
             }
@@ -146,6 +148,39 @@ async function convertP12ToLegacy(p12Path: string, password: string): Promise<st
 }
 
 // ── CLI runner ────────────────────────────────────────────────────────────────
+function collectSensitiveValues(args: string[]): string[] {
+    const values: string[] = [];
+    for (let i = 0; i < args.length; i++) {
+        if (SENSITIVE_ARG_FLAGS.has(args[i]) && args[i + 1]) {
+            values.push(args[i + 1]);
+            i++;
+        }
+    }
+    return values.filter(Boolean);
+}
+
+function redactText(text: string, args: string[]): string {
+    let redacted = text || '';
+    for (const value of collectSensitiveValues(args)) {
+        redacted = redacted.split(value).join('[redacted]');
+    }
+    return redacted.replace(/pass:[^\s'"]+/g, 'pass:[redacted]');
+}
+
+function redactArgsForLog(args: string[]): string {
+    const visible: string[] = [];
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (SENSITIVE_ARG_FLAGS.has(arg)) {
+            visible.push(arg, '[redacted]');
+            i++;
+            continue;
+        }
+        visible.push(arg);
+    }
+    return visible.slice(0, 10).join(' ');
+}
+
 function runTool(toolPath: string, args: string[], toolName: string, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
         if (signal?.aborted) return reject(new Error("Cancelled"));
@@ -154,12 +189,12 @@ function runTool(toolPath: string, args: string[], toolName: string, signal?: Ab
             return reject(new Error(`${toolName} no encontrado en ${toolPath}`));
         }
         // Log sin mostrar los argumentos de contraseña (-p/-k/-m)
-        console.log(`  🔏 ${toolName} ${args.filter(a => !a.match(/^-[kpm]$/)).slice(0, 6).join(' ')}...`);
+        console.log(`  [SpeedySign] ${toolName} ${redactArgsForLog(args)}...`);
 
         const proc = execFile(toolPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
             if (error) {
                 if (signal?.aborted) return reject(new Error("Cancelled"));
-                const details = stderr || stdout || error.message;
+                const details = redactText(stderr || stdout || error.message, args);
                 return reject(new Error(`Fallo en ${toolName}: ${details}`));
             }
             resolve();
@@ -255,6 +290,7 @@ export async function executeSign(
             if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'arksign' }; }
         }
         cleanupLegacyP12();
+        console.error(`  [SpeedySign] Error interno de firma: ${errors.join(' | ')}`);
         throw new Error(IS_PRODUCTION ? 'Error al firmar con zsign' : errors.join(' | '));
     }
 
@@ -272,6 +308,7 @@ export async function executeSign(
             if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'zsign' }; }
         }
         cleanupLegacyP12();
+        console.error(`  [SpeedySign] Error interno de firma: ${errors.join(' | ')}`);
         throw new Error(IS_PRODUCTION ? 'Error al firmar con arksign' : errors.join(' | '));
     }
 
@@ -297,6 +334,7 @@ export async function executeSign(
         return { success: true, outputPath: options.outputPath, signerUsed: finalSigner };
     }
 
+    console.error(`  [SpeedySign] Error interno de firma: ${errors.join(' | ')}`);
     throw new Error(IS_PRODUCTION
         ? 'El proceso de firma falló en todos los motores disponibles.'
         : `Errores: ${errors.join(' | ')}`);
