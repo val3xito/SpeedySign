@@ -1,6 +1,12 @@
 # SpeedySign - Full Stack
 # Compila zsign + ArkSigning + construye frontend Expo + servidor Node.js
 
+# Compilar SpeedySigner en Rust
+FROM rust:1-bookworm AS rust-builder
+WORKDIR /usr/src/speedysigner
+COPY SpeedySigner/ .
+RUN cargo build --release
+
 FROM node:20-slim AS signer-builder
 
 # Instalar dependencias de compilación para zsign y ArkSigning
@@ -88,11 +94,12 @@ RUN npm prune --production
 # Copiar frontend compilado
 COPY --from=frontend-builder /frontend/dist /app/dist
 
-# Copiar zsign y arksigning compilados
+# Copiar zsign, arksigning y speedysigner compilados
 RUN mkdir -p /app/bin
 COPY --from=signer-builder /tmp/zsign/bin/zsign /app/bin/zsign
 COPY --from=signer-builder /tmp/arksigning/build/arksigning /app/bin/arksign
-RUN chmod +x /app/bin/zsign /app/bin/arksign
+COPY --from=rust-builder /usr/src/speedysigner/target/release/speedysigner-cli /app/bin/speedysigner
+RUN chmod +x /app/bin/zsign /app/bin/arksign /app/bin/speedysigner
 
 # Crear directorios necesarios y ajustar permisos para el usuario 'node'
 RUN mkdir -p signed temp && chown -R node:node signed temp

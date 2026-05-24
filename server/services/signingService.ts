@@ -28,9 +28,10 @@ const SERVER_ROOT  = (IS_PRODUCTION || __dirname.includes('dist'))
 const BIN_DIR      = path.join(SERVER_ROOT, 'bin');
 const ZSIGN_PATH   = path.join(BIN_DIR, process.platform === 'win32' ? 'zsign.exe'   : 'zsign');
 const ARKSIGN_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'arksign.exe' : 'arksign');
+const SPEEDYSIGNER_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'speedysigner.exe' : 'speedysigner');
 const SENSITIVE_ARG_FLAGS = new Set(['-k', '-p', '-m', '-o', '-e', '-l', '-w']);
 
-export type SignerType = 'auto' | 'zsign' | 'arksign';
+export type SignerType = 'auto' | 'zsign' | 'arksign' | 'speedysigner';
 
 export interface SignOptions {
     inputPath:          string;
@@ -266,17 +267,43 @@ export async function executeSign(
     if (options.customName)         console.log(`  📝 Nombre: ${options.customName}`);
     if (options.customVersion)      console.log(`  🏷️  Versión: ${options.customVersion}`);
 
-    const tryZsign   = async () => { try { await runTool(ZSIGN_PATH,   args, 'zsign',   signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
-    const tryArksign = async () => { try { await runTool(ARKSIGN_PATH, args, 'arksign', signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
+    const tryZsign        = async () => { try { await runTool(ZSIGN_PATH,        args, 'zsign',        signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
+    const tryArksign      = async () => { try { await runTool(ARKSIGN_PATH,      args, 'arksign',      signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
+    const trySpeedysigner = async () => { try { await runTool(SPEEDYSIGNER_PATH, args, 'speedysigner', signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
 
-    const zsignAvailable   = fs.existsSync(ZSIGN_PATH);
-    const arksignAvailable = fs.existsSync(ARKSIGN_PATH);
+    const zsignAvailable        = fs.existsSync(ZSIGN_PATH);
+    const arksignAvailable      = fs.existsSync(ARKSIGN_PATH);
+    const speedysignerAvailable = fs.existsSync(SPEEDYSIGNER_PATH);
 
-    if (!zsignAvailable && !arksignAvailable) {
-        throw new Error('No se encontró ningún motor de firma (zsign/arksign) en el servidor.');
+    if (!zsignAvailable && !arksignAvailable && !speedysignerAvailable) {
+        throw new Error('No se encontró ningún motor de firma (zsign/arksign/speedysigner) en el servidor.');
     }
 
-    // Manual: zsign (con fallback a arksign si zsign no existe)
+    // Manual: speedysigner (con fallback a zsign, luego arksign)
+    if (signerPref === 'speedysigner') {
+        if (speedysignerAvailable) {
+            const ok = await trySpeedysigner();
+            await logSigningAttempt(userId, ip, appName, bundleId || '', 'speedysigner', 'manual', ok, errors[0]);
+            if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'speedysigner' }; }
+        }
+        if (zsignAvailable) {
+            console.log('  ⚠️  speedysigner no disponible/falló → fallback a zsign...');
+            const ok = await tryZsign();
+            await logSigningAttempt(userId, ip, appName, bundleId || '', 'zsign', 'fallback', ok, errors.join(' | '));
+            if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'zsign' }; }
+        }
+        if (arksignAvailable) {
+            console.log('  ⚠️  zsign no disponible/falló → fallback a arksign...');
+            const ok = await tryArksign();
+            await logSigningAttempt(userId, ip, appName, bundleId || '', 'arksign', 'fallback', ok, errors.join(' | '));
+            if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'arksign' }; }
+        }
+        cleanupLegacyP12();
+        console.error(`  [SpeedySign] Error interno de firma con speedysigner: ${errors.join(' | ')}`);
+        throw new Error(IS_PRODUCTION ? 'Error al firmar con speedysigner' : errors.join(' | '));
+    }
+
+    // Manual: zsign (con fallback a arksign, luego speedysigner)
     if (signerPref === 'zsign') {
         if (zsignAvailable) {
             const ok = await tryZsign();
@@ -289,12 +316,18 @@ export async function executeSign(
             await logSigningAttempt(userId, ip, appName, bundleId || '', 'arksign', 'fallback', ok, errors.join(' | '));
             if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'arksign' }; }
         }
+        if (speedysignerAvailable) {
+            console.log('  ⚠️  arksign no disponible/falló → fallback a speedysigner...');
+            const ok = await trySpeedysigner();
+            await logSigningAttempt(userId, ip, appName, bundleId || '', 'speedysigner', 'fallback', ok, errors.join(' | '));
+            if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'speedysigner' }; }
+        }
         cleanupLegacyP12();
         console.error(`  [SpeedySign] Error interno de firma: ${errors.join(' | ')}`);
         throw new Error(IS_PRODUCTION ? 'Error al firmar con zsign' : errors.join(' | '));
     }
 
-    // Manual: arksign (con fallback a zsign si arksign no existe)
+    // Manual: arksign (con fallback a zsign, luego speedysigner)
     if (signerPref === 'arksign') {
         if (arksignAvailable) {
             const ok = await tryArksign();
@@ -307,12 +340,18 @@ export async function executeSign(
             await logSigningAttempt(userId, ip, appName, bundleId || '', 'zsign', 'fallback', ok, errors.join(' | '));
             if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'zsign' }; }
         }
+        if (speedysignerAvailable) {
+            console.log('  ⚠️  zsign no disponible/falló → fallback a speedysigner...');
+            const ok = await trySpeedysigner();
+            await logSigningAttempt(userId, ip, appName, bundleId || '', 'speedysigner', 'fallback', ok, errors.join(' | '));
+            if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'speedysigner' }; }
+        }
         cleanupLegacyP12();
         console.error(`  [SpeedySign] Error interno de firma: ${errors.join(' | ')}`);
         throw new Error(IS_PRODUCTION ? 'Error al firmar con arksign' : errors.join(' | '));
     }
 
-    // Auto: zsign primero, arksign fallback
+    // Auto: zsign primero, arksign fallback, speedysigner fallback
     let finalSigner = 'zsign';
     let success = false;
 
@@ -324,6 +363,12 @@ export async function executeSign(
         console.log('  ⚠️  zsign falló → fallback a arksign...');
         finalSigner = 'arksign';
         success = await tryArksign();
+    }
+
+    if (!success && speedysignerAvailable) {
+        console.log('  ⚠️  arksign falló → fallback a speedysigner...');
+        finalSigner = 'speedysigner';
+        success = await trySpeedysigner();
     }
 
     await logSigningAttempt(userId, ip, appName, bundleId || '', finalSigner, 'auto', success, errors.join(' | '));

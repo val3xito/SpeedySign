@@ -48,6 +48,9 @@ const ZSIGN_PATH   = process.platform === "win32"
 const ARKSIGN_PATH = process.platform === "win32"
     ? path.join(BIN_DIR, "arksign.exe")
     : path.join(BIN_DIR, "arksign");
+const SPEEDYSIGNER_PATH = process.platform === "win32"
+    ? path.join(BIN_DIR, "speedysigner.exe")
+    : path.join(BIN_DIR, "speedysigner");
 
 // Leer credenciales opcionales del proyecto principal (modo local)
 let P12_PATH      = "";
@@ -222,7 +225,7 @@ signingRouter.get("/sign/status/:jobId", (req: Request, res: Response) => {
 // No expone rutas de binarios, configuración interna ni conteo de archivos.
 
 signingRouter.get("/status", (_req: Request, res: Response) => {
-    const signerReady = fs.existsSync(ZSIGN_PATH) || fs.existsSync(ARKSIGN_PATH);
+    const signerReady = fs.existsSync(ZSIGN_PATH) || fs.existsSync(ARKSIGN_PATH) || fs.existsSync(SPEEDYSIGNER_PATH);
     res.json({ status: "ok", ready: signerReady });
 });
 
@@ -332,7 +335,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
     const provisionPathToUse = provisionFile ? provisionFile.path : PROVISION_PATH;
     const p12PasswordToUse   = p12File ? (p12Password || "") : P12_PASSWORD;
 
-    if (!fs.existsSync(ZSIGN_PATH) && !fs.existsSync(ARKSIGN_PATH)) {
+    if (!fs.existsSync(ZSIGN_PATH) && !fs.existsSync(ARKSIGN_PATH) && !fs.existsSync(SPEEDYSIGNER_PATH)) {
         return res.status(503).json({ error: "Servicio de firma no disponible" });
     }
     if (!fs.existsSync(p12PathToUse)) {
