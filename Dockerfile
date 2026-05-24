@@ -97,6 +97,7 @@ RUN chmod +x /app/bin/zsign /app/bin/arksign
 RUN mkdir -p signed temp && chown -R node:node signed temp
 
 # Configurar y exponer puerto
+ENV NODE_ENV=production
 ENV PORT=3001
 EXPOSE 3001
 
