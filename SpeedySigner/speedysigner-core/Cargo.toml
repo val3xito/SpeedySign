@@ -13,4 +13,4 @@ der = { version = "0.7.8", features = ["derive", "pem"] }
 flate2 = { version = "1.0.28", default-features = false, features = ["rust_backend"] }
 crc32fast = "1.3.2"
 hex = "0.4.3"
-zsign_rs = "0.1.1"
+zsign-rs = "0.1.1"
