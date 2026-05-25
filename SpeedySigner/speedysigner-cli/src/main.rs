@@ -99,8 +99,14 @@ fn main() -> Result<()> {
         }
     }
 
-    // Ruta temporal para escribir la IPA modificada antes de la firma criptográfica
-    let temp_modified_ipa_path = format!("{}.repack.tmp", args.output);
+    // Ruta temporal para escribir la IPA modificada antes de la firma criptográfica.
+    // Usamos el directorio temporal del sistema (como /tmp en Linux) que suele ser mucho más rápido (RAM-backed o SSD local).
+    let output_path = std::path::Path::new(&args.output);
+    let filename = output_path.file_name().and_then(|f| f.to_str()).unwrap_or("temp.ipa");
+    let temp_modified_ipa_path = std::env::temp_dir()
+        .join(format!("{}.repack.tmp", filename))
+        .to_string_lossy()
+        .into_owned();
     println!("Creando archivo temporal de repaquetado: {}", temp_modified_ipa_path);
 
     let out_file = fs::File::create(&temp_modified_ipa_path)
@@ -120,7 +126,7 @@ fn main() -> Result<()> {
                     let target_zip_path = format!("{}Frameworks/{}", app_dir, filename);
                     println!("Copiando dylib en ZIP: {}", target_zip_path);
                     if let Ok(data) = fs::read(dl_path) {
-                        if let Err(e) = writer.write_file(&target_zip_path, &data, true) {
+                        if let Err(e) = writer.write_file(&target_zip_path, &data, true, 0x81ED0000) {
                             println!("Error al escribir dylib en el ZIP: {}", e);
                         } else {
                             injected_dylibs.push((filename.to_string(), false));
@@ -137,7 +143,7 @@ fn main() -> Result<()> {
                     let target_zip_path = format!("{}Frameworks/{}", app_dir, filename);
                     println!("Copiando dylib débil en ZIP: {}", target_zip_path);
                     if let Ok(data) = fs::read(dl_path) {
-                        if let Err(e) = writer.write_file(&target_zip_path, &data, true) {
+                        if let Err(e) = writer.write_file(&target_zip_path, &data, true, 0x81ED0000) {
                             println!("Error al escribir dylib débil en el ZIP: {}", e);
                         } else {
                             injected_dylibs.push((filename.to_string(), true));
@@ -197,7 +203,7 @@ fn main() -> Result<()> {
                 .or_else(|_| plist_editor.serialize_to_xml())
                 .map_err(|e| anyhow!("Error al serializar Info.plist modificado: {}", e))?;
 
-            writer.write_file(path, &new_plist_data, true)
+            writer.write_file(path, &new_plist_data, true, entry.external_attributes)
                 .map_err(|e| anyhow!("Error al escribir Info.plist en el ZIP: {}", e))?;
             continue;
         }
@@ -220,7 +226,7 @@ fn main() -> Result<()> {
                 }
             }
 
-            writer.write_file(path, &macho_bytes, true)
+            writer.write_file(path, &macho_bytes, true, entry.external_attributes)
                 .map_err(|e| anyhow!("Error al escribir Mach-O modificado en el ZIP: {}", e))?;
             continue;
         }

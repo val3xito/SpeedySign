@@ -72,7 +72,7 @@ impl<W: Write + Seek> ZipWriter<W> {
     }
 
     /// Escribe un archivo nuevo desde un buffer en memoria, con opción de comprimirlo.
-    pub fn write_file(&mut self, name: &str, data: &[u8], compress: bool) -> Result<(), &'static str> {
+    pub fn write_file(&mut self, name: &str, data: &[u8], compress: bool, external_attributes: u32) -> Result<(), &'static str> {
         let current_offset = self
             .writer
             .stream_position()
@@ -159,7 +159,7 @@ impl<W: Write + Seek> ZipWriter<W> {
             local_header_offset: current_offset,
             last_mod_time: 0,
             last_mod_date: 0,
-            external_attributes: if name.ends_with('/') { 0x10 } else { 0 }, // Atributo de directorio básico si aplica
+            external_attributes,
         });
 
         Ok(())
@@ -314,11 +314,11 @@ mod tests {
 
         // 1. Escribir un archivo almacenado (sin compresión)
         let file1_data = b"Hola, este es un archivo de prueba almacenado sin comprimir.";
-        writer.write_file("test_stored.txt", file1_data, false).unwrap();
+        writer.write_file("test_stored.txt", file1_data, false, 0).unwrap();
 
         // 2. Escribir un archivo comprimido (deflated)
         let file2_data = b"Hola, este es un archivo de prueba comprimido usando deflate! Repetir datos para probar compresion. Repetir datos para probar compresion. Repetir datos para probar compresion.";
-        writer.write_file("test_compressed.txt", file2_data, true).unwrap();
+        writer.write_file("test_compressed.txt", file2_data, true, 0).unwrap();
 
         // Finalizar el zip
         writer.finish(b"Comentario de prueba").unwrap();
