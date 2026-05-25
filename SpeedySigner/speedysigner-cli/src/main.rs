@@ -247,10 +247,9 @@ fn main() -> Result<()> {
     let mut signer = zsign_rs::ZSign::new().credentials(credentials);
     signer = signer.provisioning_profile(args.provision.clone());
 
-    // Si se especificó entitlements personalizado
+    // Si se especificó entitlements personalizado, advertir que en esta versión de zsign_rs se extraen automáticamente de la provisión.
     if let Some(ref ent_path) = args.entitlements {
-        println!("Usando entitlements personalizado: {}", ent_path);
-        signer = signer.entitlements(ent_path.clone());
+        println!("Advertencia: Entitlements personalizado ({}) ignorado. zsign_rs los extrae automáticamente del perfil de provisión.", ent_path);
     }
 
     println!("Firmando la IPA con zsign_rs...");
