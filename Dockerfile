@@ -3,6 +3,7 @@
 
 # Compilar SpeedySigner en Rust
 FROM rust:1-bookworm AS rust-builder
+RUN apt-get update && apt-get install -y cmake clang && rm -rf /var/lib/apt/lists/*
 WORKDIR /usr/src/speedysigner
 COPY SpeedySigner/ .
 RUN cargo build --release
