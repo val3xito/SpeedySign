@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../../hooks/useTheme";
 import { useHeaderHeight } from "@react-navigation/elements";
 import {
@@ -250,12 +251,18 @@ export default function LibraryScreen() {
     const [refreshing, setRefreshing] = React.useState(false);
     const [resigningId, setResigningId] = useState<string | null>(null);
     const [resigningAll, setResigningAll] = useState(false);
+    const [signerPreference, setSignerPreference] = useState<"auto" | "zsign" | "arksign" | "speedysigner">("auto");
 
     // Recargar apps instaladas cada vez que el usuario navega a esta pantalla.
     // Necesario porque app-detail escribe en AsyncStorage desde otra instancia del hook.
     useFocusEffect(
         useCallback(() => {
             reload();
+            AsyncStorage.getItem('signer_pref').then((val) => {
+                if (val === "auto" || val === "zsign" || val === "arksign" || val === "speedysigner") {
+                    setSignerPreference(val as any);
+                }
+            });
         }, [reload])
     );
 
@@ -298,7 +305,7 @@ export default function LibraryScreen() {
 
         setResigningId(app.id);
         try {
-            const result = await signIPAWithBackend(app.ipaUrl, app.name, cert, app.bundleId, app.version);
+            const result = await signIPAWithBackend(app.ipaUrl, app.name, cert, app.bundleId, app.version, signerPreference);
             
             const isIOS = Platform.OS === "ios" || 
                 (Platform.OS === "web" && typeof navigator !== "undefined" && (
@@ -342,7 +349,7 @@ export default function LibraryScreen() {
         } finally {
             setResigningId(null);
         }
-    }, [getActiveCertificate, saveInstallation, t]);
+    }, [getActiveCertificate, saveInstallation, t, signerPreference]);
 
     const handleResignAll = useCallback(async () => {
         const appsWithUrl = installedApps.filter(a => a.ipaUrl);
@@ -360,7 +367,7 @@ export default function LibraryScreen() {
         for (const app of appsWithUrl) {
             setResigningId(app.id);
             try {
-                const result = await signIPAWithBackend(app.ipaUrl!, app.name, cert, app.bundleId, app.version);
+                const result = await signIPAWithBackend(app.ipaUrl!, app.name, cert, app.bundleId, app.version, signerPreference);
                 
                 const isIOS = Platform.OS === "ios" || 
                     (Platform.OS === "web" && typeof navigator !== "undefined" && (
@@ -401,7 +408,7 @@ export default function LibraryScreen() {
             ? t("library.resignAllFail", "{{ok}} firmadas, {{fail}} fallaron", { ok, fail })
             : t("library.resignAllDesc", "{{ok}} firmadas correctamente", { ok });
         notify.success(t("library.resignAllTitle", "Re-firma completada"), msg);
-    }, [installedApps, getActiveCertificate, saveInstallation, t]);
+    }, [installedApps, getActiveCertificate, saveInstallation, t, signerPreference]);
 
     // Separar apps vigentes y revocadas
     const active = installedApps.filter(

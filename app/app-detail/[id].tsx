@@ -414,7 +414,22 @@ export default function AppDetailScreen() {
                 abortControllerRef.current = null;
             }
         }
-    }, [hasValidCertificate, getActiveCertificate, params.name, params.downloadURL]);
+    }, [
+        hasValidCertificate,
+        getActiveCertificate,
+        params.downloadURL,
+        params.name,
+        params.id,
+        params.version,
+        params.icon,
+        params.repoName,
+        signerPreference,
+        ipaOptions,
+        signingState.isSigning,
+        isThisApp,
+        saveInstallation,
+        t
+    ]);
 
     /**
      * Formatea bytes a texto legible.
