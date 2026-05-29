@@ -29,6 +29,7 @@ const BIN_DIR      = path.join(SERVER_ROOT, 'bin');
 const ZSIGN_PATH   = path.join(BIN_DIR, process.platform === 'win32' ? 'zsign.exe'   : 'zsign');
 const ARKSIGN_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'arksign.exe' : 'arksign');
 const SPEEDYSIGNER_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'speedysigner.exe' : 'speedysigner');
+const ENABLE_SPEEDYSIGNER_EXPERIMENTAL = process.env.ENABLE_SPEEDYSIGNER_EXPERIMENTAL === 'true';
 const SENSITIVE_ARG_FLAGS = new Set(['-k', '-p', '-m', '-o', '-e', '-l', '-w']);
 
 export type SignerType = 'auto' | 'zsign' | 'arksign' | 'speedysigner';
@@ -282,7 +283,7 @@ export async function executeSign(
 
     const zsignAvailable        = fs.existsSync(ZSIGN_PATH);
     const arksignAvailable      = fs.existsSync(ARKSIGN_PATH);
-    const speedysignerAvailable = fs.existsSync(SPEEDYSIGNER_PATH);
+    const speedysignerAvailable = ENABLE_SPEEDYSIGNER_EXPERIMENTAL && fs.existsSync(SPEEDYSIGNER_PATH);
 
     if (!zsignAvailable && !arksignAvailable && !speedysignerAvailable) {
         throw new Error('No se encontró ningún motor de firma (zsign/arksign/speedysigner) en el servidor.');
@@ -290,6 +291,11 @@ export async function executeSign(
 
     // Manual: speedysigner (con fallback a zsign, luego arksign)
     if (signerPref === 'speedysigner') {
+        if (!ENABLE_SPEEDYSIGNER_EXPERIMENTAL) {
+            await logSigningAttempt(userId, ip, appName, bundleId || '', 'speedysigner', 'manual', false, 'SpeedySigner experimental desactivado');
+            cleanupLegacyP12();
+            throw new Error('SpeedySigner está desactivado temporalmente: la firma generada no supera la verificación de integridad de iOS. Usa zsign mientras se corrige.');
+        }
         if (speedysignerAvailable) {
             const ok = await trySpeedysigner();
             await logSigningAttempt(userId, ip, appName, bundleId || '', 'speedysigner', 'manual', ok, errors[0]);
