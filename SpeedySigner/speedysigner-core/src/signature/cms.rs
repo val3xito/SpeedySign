@@ -17,7 +17,7 @@ pub fn generate_cms_signature(
     //    - SigningTime (OID 1.2.840.113549.1.9.5) -> Hora de firma
     // 3. Generar la firma criptográfica (RSA-SHA256 o ECDSA-SHA256) sobre los atributos serializados en DER.
     // 4. Retornar la estructura final CMS codificada en DER.
-    
+
     // Devolvemos un mock estructurado para asegurar que compila.
     Ok(vec![0x30; 256]) // Contenedor DER ficticio para validación estructural
 }

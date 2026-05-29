@@ -1,7 +1,7 @@
-use std::io::{Seek, Write};
+use super::parser::ZipEntry;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
-use super::parser::ZipEntry;
+use std::io::{Seek, Write};
 
 pub struct WrittenEntry {
     pub name: String,
@@ -30,11 +30,15 @@ impl<W: Write + Seek> ZipWriter<W> {
 
     /// Copia una entrada ZIP directamente del archivo original sin descomprimir ni recomprimir.
     /// Esto es extremadamente rápido y eficiente.
-    pub fn write_raw_entry(&mut self, original_data: &[u8], entry: &ZipEntry) -> Result<(), &'static str> {
-        let current_offset = self
-            .writer
-            .stream_position()
-            .map_err(|_| "Error al obtener posición del escritor")? as u32;
+    pub fn write_raw_entry(
+        &mut self,
+        original_data: &[u8],
+        entry: &ZipEntry,
+    ) -> Result<(), &'static str> {
+        let current_offset =
+            self.writer
+                .stream_position()
+                .map_err(|_| "Error al obtener posición del escritor")? as u32;
 
         let lfh_idx = entry.local_header_offset as usize;
         if lfh_idx + 30 > original_data.len() {
@@ -42,8 +46,10 @@ impl<W: Write + Seek> ZipWriter<W> {
         }
 
         // Obtener el tamaño real de nombre y extra en la cabecera local original
-        let name_len = u16::from_le_bytes([original_data[lfh_idx + 26], original_data[lfh_idx + 27]]) as usize;
-        let extra_len = u16::from_le_bytes([original_data[lfh_idx + 28], original_data[lfh_idx + 29]]) as usize;
+        let name_len =
+            u16::from_le_bytes([original_data[lfh_idx + 26], original_data[lfh_idx + 27]]) as usize;
+        let extra_len =
+            u16::from_le_bytes([original_data[lfh_idx + 28], original_data[lfh_idx + 29]]) as usize;
         let total_block_len = 30 + name_len + extra_len + (entry.compressed_size as usize);
 
         if lfh_idx + total_block_len > original_data.len() {
@@ -72,11 +78,17 @@ impl<W: Write + Seek> ZipWriter<W> {
     }
 
     /// Escribe un archivo nuevo desde un buffer en memoria, con opción de comprimirlo.
-    pub fn write_file(&mut self, name: &str, data: &[u8], compress: bool, external_attributes: u32) -> Result<(), &'static str> {
-        let current_offset = self
-            .writer
-            .stream_position()
-            .map_err(|_| "Error al obtener posición del escritor")? as u32;
+    pub fn write_file(
+        &mut self,
+        name: &str,
+        data: &[u8],
+        compress: bool,
+        external_attributes: u32,
+    ) -> Result<(), &'static str> {
+        let current_offset =
+            self.writer
+                .stream_position()
+                .map_err(|_| "Error al obtener posición del escritor")? as u32;
 
         let crc32 = crc32fast::hash(data);
         let uncompressed_size = data.len() as u32;
@@ -86,7 +98,9 @@ impl<W: Write + Seek> ZipWriter<W> {
             encoder
                 .write_all(data)
                 .map_err(|_| "Error al comprimir archivo")?;
-            let compressed = encoder.finish().map_err(|_| "Error al finalizar compresión")?;
+            let compressed = encoder
+                .finish()
+                .map_err(|_| "Error al finalizar compresión")?;
             (8u16, compressed)
         } else {
             (0u16, data.to_vec())
@@ -304,7 +318,7 @@ impl<W: Write + Seek> ZipWriter<W> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zip::{ZipArchive, decompress_entry};
+    use crate::zip::{decompress_entry, ZipArchive};
     use std::io::Cursor;
 
     #[test]
@@ -314,11 +328,15 @@ mod tests {
 
         // 1. Escribir un archivo almacenado (sin compresión)
         let file1_data = b"Hola, este es un archivo de prueba almacenado sin comprimir.";
-        writer.write_file("test_stored.txt", file1_data, false, 0).unwrap();
+        writer
+            .write_file("test_stored.txt", file1_data, false, 0)
+            .unwrap();
 
         // 2. Escribir un archivo comprimido (deflated)
         let file2_data = b"Hola, este es un archivo de prueba comprimido usando deflate! Repetir datos para probar compresion. Repetir datos para probar compresion. Repetir datos para probar compresion.";
-        writer.write_file("test_compressed.txt", file2_data, true, 0).unwrap();
+        writer
+            .write_file("test_compressed.txt", file2_data, true, 0)
+            .unwrap();
 
         // Finalizar el zip
         writer.finish(b"Comentario de prueba").unwrap();

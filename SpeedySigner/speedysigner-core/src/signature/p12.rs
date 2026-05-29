@@ -12,7 +12,7 @@ pub fn extract_credentials(p12_bytes: &[u8], _password: &str) -> Result<AppleSig
     // 2. Usar un parser ASN.1 (ej. der o simple_asn1) para estructurar el PFX.
     // 3. Descifrar el SafeContents cifrado con PBES2/PBKDF2 (AES/DES/RC2).
     // 4. Extraer el CertBag (certificado X.509) y el ShroudedKeyBag (llave privada PKCS#8).
-    
+
     // Por ahora, retornamos un mock estructurado para que compile y esté listo para el reemplazo.
     Ok(AppleSigner {
         certificate: vec![0u8; 100], // Mock de certificado X.509

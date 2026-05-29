@@ -245,18 +245,27 @@ export async function executeSign(
     const { appName, bundleId, signerPref, userId = 'unknown' } = options;
     const ip = ipAddress || 'unknown';
 
-    // Convertir P12 a legacy si es necesario (compatibilidad con OpenSSL 3.x)
-    const resolvedP12 = await convertP12ToLegacy(options.p12Path, options.p12Pass || '');
-    const resolvedOptions = resolvedP12 !== options.p12Path
-        ? { ...options, p12Path: resolvedP12 }
-        : options;
-
-    const args = buildArgs(resolvedOptions);
+    const speedysignerArgs = buildArgs(options);
+    let resolvedP12: string | null = null;
+    let fallbackArgs: string[] | null = null;
     const errors: string[] = [];
+
+    const getFallbackArgs = async (): Promise<string[]> => {
+        if (!fallbackArgs) {
+            // zsign/arksign necesitan a veces P12 legacy. SpeedySigner no pasa por
+            // esta conversion para evitar el coste de OpenSSL en el camino rapido.
+            resolvedP12 = await convertP12ToLegacy(options.p12Path, options.p12Pass || '');
+            const resolvedOptions = resolvedP12 !== options.p12Path
+                ? { ...options, p12Path: resolvedP12 }
+                : options;
+            fallbackArgs = buildArgs(resolvedOptions);
+        }
+        return fallbackArgs;
+    };
 
     // Limpiar el P12 legacy temporal (contiene clave privada) con secureDelete
     const cleanupLegacyP12 = () => {
-        if (resolvedP12 !== options.p12Path && fs.existsSync(resolvedP12)) {
+        if (resolvedP12 && resolvedP12 !== options.p12Path && fs.existsSync(resolvedP12)) {
             secureDelete(resolvedP12);
         }
     };
@@ -267,9 +276,9 @@ export async function executeSign(
     if (options.customName)         console.log(`  📝 Nombre: ${options.customName}`);
     if (options.customVersion)      console.log(`  🏷️  Versión: ${options.customVersion}`);
 
-    const tryZsign        = async () => { try { await runTool(ZSIGN_PATH,        args, 'zsign',        signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
-    const tryArksign      = async () => { try { await runTool(ARKSIGN_PATH,      args, 'arksign',      signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
-    const trySpeedysigner = async () => { try { await runTool(SPEEDYSIGNER_PATH, args, 'speedysigner', signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
+    const tryZsign        = async () => { try { await runTool(ZSIGN_PATH,        await getFallbackArgs(), 'zsign',        signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
+    const tryArksign      = async () => { try { await runTool(ARKSIGN_PATH,      await getFallbackArgs(), 'arksign',      signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
+    const trySpeedysigner = async () => { try { await runTool(SPEEDYSIGNER_PATH, speedysignerArgs,       'speedysigner', signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
 
     const zsignAvailable        = fs.existsSync(ZSIGN_PATH);
     const arksignAvailable      = fs.existsSync(ARKSIGN_PATH);
@@ -351,7 +360,8 @@ export async function executeSign(
         throw new Error(IS_PRODUCTION ? 'Error al firmar con arksign' : errors.join(' | '));
     }
 
-    // Auto: zsign primero, arksign fallback, speedysigner fallback
+    // Auto: zsign primero. SpeedySigner queda como opcion manual hasta validar
+    // compatibilidad y rendimiento con IPAs reales.
     let finalSigner = 'zsign';
     let success = false;
 

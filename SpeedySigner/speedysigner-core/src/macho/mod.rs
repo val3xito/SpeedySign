@@ -1,6 +1,6 @@
 pub mod injection;
-pub use injection::inject_dylib;
 use goblin::mach::{Mach, MachO};
+pub use injection::inject_dylib;
 
 pub struct MachOInfo {
     pub is_fat: bool,

@@ -1,272 +1,244 @@
-use anyhow::{anyhow, Context, Result};
-use clap::Parser;
+use anyhow::{anyhow, bail, Context, Result};
+use speedysigner_core::{sign_ipa, SignConfig};
+use std::env;
+use std::ffi::OsString;
 use std::fs;
-use speedysigner_core::{inject_dylib, PlistEditor, ZipArchive, ZipWriter};
+use std::path::Path;
 
-#[derive(Parser, Debug)]
-#[command(author, version, about = "SpeedySigner CLI", long_about = None)]
+#[derive(Debug, Default)]
 struct Args {
-    /// Ruta del certificado (.p12)
-    #[arg(short = 'k', long)]
     key: String,
-
-    /// Contraseña del certificado
-    #[arg(short = 'p', long)]
     password: Option<String>,
-
-    /// Ruta del provisioning profile
-    #[arg(short = 'm', long)]
     provision: String,
-
-    /// Ruta del archivo IPA de salida
-    #[arg(short = 'o', long)]
     output: String,
-
-    /// Identificador del paquete (Bundle ID) personalizado
-    #[arg(short = 'b', long)]
     bundle_id: Option<String>,
-
-    /// Nombre visible (Display Name) personalizado
-    #[arg(short = 'n', long)]
     name: Option<String>,
-
-    /// Versión de la app personalizada
-    #[arg(short = 'r', long)]
     version: Option<String>,
-
-    /// Ruta de archivo .entitlements personalizado
-    #[arg(short = 'e', long)]
     entitlements: Option<String>,
-
-    /// Bandera de compatibilidad de sólo SHA-256
-    #[arg(long)]
     sha256_only: bool,
-
-    /// Nivel de compresión del ZIP (0-9)
-    #[arg(short = 'z', long)]
     compression: Option<u8>,
-
-    /// Rutas a dylibs para inyección fuerte (se permiten múltiples)
-    #[arg(short = 'l', long)]
     dylib: Vec<String>,
-
-    /// Rutas a dylibs para inyección débil (se permiten múltiples)
-    #[arg(short = 'w', long)]
     weak_dylib: Vec<String>,
-
-    /// Ruta del archivo IPA de entrada (.ipa o .zip)
     input: String,
 }
 
 fn main() -> Result<()> {
-    let args = Args::parse();
+    let args = parse_args(env::args().skip(1))?;
     println!("=== SpeedySigner CLI ===");
     println!("Entrada: {}", args.input);
     println!("Salida: {}", args.output);
     println!("Certificado: {}", args.key);
     println!("Provision: {}", args.provision);
 
-    // Leer el archivo de entrada en memoria
-    let ipa_bytes = fs::read(&args.input)
-        .with_context(|| format!("Error al leer el archivo de entrada en: {}", args.input))?;
+    validate_inputs(&args)?;
 
-    println!("Parseando archivo ZIP original ({} bytes)...", ipa_bytes.len());
-    let archive = ZipArchive::parse(&ipa_bytes)
-        .map_err(|e| anyhow!("Error al parsear el IPA original: {}", e))?;
+    println!("Motor de firma: SpeedySigner nativo");
+    let config = args.to_sign_config();
+    sign_ipa(&config).map_err(|err| anyhow!(err))?;
 
-    // Determinar la ruta de Info.plist y del ejecutable principal si es necesario
-    let mut main_plist_path = None;
-    let mut main_macho_path = None;
-    let mut app_dir_path = None;
-
-    if let Ok(plist_path) = speedysigner_core::signer::find_main_info_plist(&archive) {
-        println!("Info.plist principal detectado en: {}", plist_path);
-        main_plist_path = Some(plist_path.clone());
-        if let Some(plist_entry) = archive.entries.get(&plist_path) {
-            if let Ok(plist_data) = speedysigner_core::zip::decompress_entry(plist_entry) {
-                if let Ok(plist_editor) = PlistEditor::parse(&plist_data) {
-                    if let Some(exec_val) = plist_editor.dict.get("CFBundleExecutable") {
-                        if let Some(exec_name) = exec_val.as_string() {
-                            if let Some(app_dir) = plist_path.strip_suffix("Info.plist") {
-                                app_dir_path = Some(app_dir.to_string());
-                                main_macho_path = Some(format!("{}{}", app_dir, exec_name));
-                                println!("Binario Mach-O principal detectado en: {}{}", app_dir, exec_name);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Ruta temporal para escribir la IPA modificada antes de la firma criptográfica.
-    // Usamos el directorio temporal del sistema (como /tmp en Linux) que suele ser mucho más rápido (RAM-backed o SSD local).
-    let output_path = std::path::Path::new(&args.output);
-    let filename = output_path.file_name().and_then(|f| f.to_str()).unwrap_or("temp.ipa");
-    let temp_modified_ipa_path = std::env::temp_dir()
-        .join(format!("{}.repack.tmp", filename))
-        .to_string_lossy()
-        .into_owned();
-    println!("Creando archivo temporal de repaquetado: {}", temp_modified_ipa_path);
-
-    let out_file = fs::File::create(&temp_modified_ipa_path)
-        .with_context(|| format!("Error al crear el archivo temporal de salida en: {}", temp_modified_ipa_path))?;
-    let mut writer = ZipWriter::new(out_file);
-
-    // Copiar e inyectar dylibs si se solicitó
-    let mut injected_dylibs = Vec::new();
-    let has_dylibs = !args.dylib.is_empty() || !args.weak_dylib.is_empty();
-
-    if has_dylibs {
-        if let Some(ref app_dir) = app_dir_path {
-            // Escribir los archivos dylib en la carpeta Frameworks/ del app bundle
-            for dl_path in &args.dylib {
-                let path_obj = std::path::Path::new(dl_path);
-                if let Some(filename) = path_obj.file_name().and_then(|f| f.to_str()) {
-                    let target_zip_path = format!("{}Frameworks/{}", app_dir, filename);
-                    println!("Copiando dylib en ZIP: {}", target_zip_path);
-                    if let Ok(data) = fs::read(dl_path) {
-                        if let Err(e) = writer.write_file(&target_zip_path, &data, true, 0x81ED0000) {
-                            println!("Error al escribir dylib en el ZIP: {}", e);
-                        } else {
-                            injected_dylibs.push((filename.to_string(), false));
-                        }
-                    } else {
-                        println!("Error al leer dylib desde el filesystem: {}", dl_path);
-                    }
-                }
-            }
-
-            for dl_path in &args.weak_dylib {
-                let path_obj = std::path::Path::new(dl_path);
-                if let Some(filename) = path_obj.file_name().and_then(|f| f.to_str()) {
-                    let target_zip_path = format!("{}Frameworks/{}", app_dir, filename);
-                    println!("Copiando dylib débil en ZIP: {}", target_zip_path);
-                    if let Ok(data) = fs::read(dl_path) {
-                        if let Err(e) = writer.write_file(&target_zip_path, &data, true, 0x81ED0000) {
-                            println!("Error al escribir dylib débil en el ZIP: {}", e);
-                        } else {
-                            injected_dylibs.push((filename.to_string(), true));
-                        }
-                    } else {
-                        println!("Error al leer dylib débil desde el filesystem: {}", dl_path);
-                    }
-                }
-            }
-        } else {
-            println!("Advertencia: No se pudo identificar el directorio .app de la IPA para copiar las dylibs.");
-        }
-    }
-
-    // Procesar y copiar todas las entradas del ZIP
-    for (path, entry) in &archive.entries {
-        // Ignorar las rutas que acabamos de agregar manualmente para evitar duplicación
-        let mut is_manually_added_dylib = false;
-        if let Some(ref app_dir) = app_dir_path {
-            for (filename, _) in &injected_dylibs {
-                let target_zip_path = format!("{}Frameworks/{}", app_dir, filename);
-                if path == &target_zip_path {
-                    is_manually_added_dylib = true;
-                    break;
-                }
-            }
-        }
-        if is_manually_added_dylib {
-            continue;
-        }
-
-        // ¿Es el Info.plist principal y necesitamos editarlo?
-        let is_main_plist = main_plist_path.as_ref() == Some(path);
-        let has_plist_mods = args.bundle_id.is_some() || args.name.is_some() || args.version.is_some();
-
-        if is_main_plist && has_plist_mods {
-            println!("Aplicando modificaciones a Info.plist: {}", path);
-            let plist_data = speedysigner_core::zip::decompress_entry(entry)
-                .map_err(|e| anyhow!("Error al descomprimir Info.plist: {}", e))?;
-            let mut plist_editor = PlistEditor::parse(&plist_data)
-                .map_err(|e| anyhow!("Error al parsear Info.plist: {}", e))?;
-
-            if let Some(ref bid) = args.bundle_id {
-                println!("  - Cambiando Bundle ID a: {}", bid);
-                plist_editor.set_bundle_id(bid);
-            }
-            if let Some(ref name) = args.name {
-                println!("  - Cambiando Display Name a: {}", name);
-                plist_editor.set_display_name(name);
-            }
-            if let Some(ref ver) = args.version {
-                println!("  - Cambiando versión a: {}", ver);
-                plist_editor.set_version(ver);
-            }
-
-            let new_plist_data = plist_editor.serialize_to_binary()
-                .or_else(|_| plist_editor.serialize_to_xml())
-                .map_err(|e| anyhow!("Error al serializar Info.plist modificado: {}", e))?;
-
-            writer.write_file(path, &new_plist_data, true, entry.external_attributes)
-                .map_err(|e| anyhow!("Error al escribir Info.plist en el ZIP: {}", e))?;
-            continue;
-        }
-
-        // ¿Es el Mach-O principal y necesitamos inyectar dylibs?
-        let is_main_macho = main_macho_path.as_ref() == Some(path);
-        let has_dylib_injection = !injected_dylibs.is_empty();
-
-        if is_main_macho && has_dylib_injection {
-            println!("Inyectando comandos de carga en el Mach-O: {}", path);
-            let mut macho_bytes = speedysigner_core::zip::decompress_entry(entry)
-                .map_err(|e| anyhow!("Error al descomprimir Mach-O: {}", e))?;
-
-            for (filename, is_weak) in &injected_dylibs {
-                // Ruta que iOS espera ver en el ejecutable Mach-O
-                let load_path = format!("@executable_path/Frameworks/{}", filename);
-                println!("  - Registrando comando de carga (débil={}): {}", is_weak, load_path);
-                if let Err(e) = inject_dylib(&mut macho_bytes, &load_path, *is_weak) {
-                    println!("  ⚠️ Advertencia al inyectar dylib en Mach-O: {}", e);
-                }
-            }
-
-            writer.write_file(path, &macho_bytes, true, entry.external_attributes)
-                .map_err(|e| anyhow!("Error al escribir Mach-O modificado en el ZIP: {}", e))?;
-            continue;
-        }
-
-        // Copiar entrada original en crudo (raw block copy) para máxima velocidad
-        writer.write_raw_entry(&ipa_bytes, entry)
-            .map_err(|e| anyhow!("Error al copiar la entrada ZIP {}: {}", path, e))?;
-    }
-
-    // Finalizar el archivo ZIP
-    writer.finish(&archive.comment)
-        .map_err(|e| anyhow!("Error al finalizar la estructura del ZIP: {}", e))?;
-
-    // --- PROCESO DE FIRMA CRIPTOGRÁFICA CON zsign_rs ---
-    println!("Iniciando proceso de firma criptográfica real...");
-
-    let p12_data = fs::read(&args.key)
-        .with_context(|| format!("Error al leer el certificado p12 en: {}", args.key))?;
-    let p12_password = args.password.clone().unwrap_or_default();
-    
-    let credentials = zsign_rs::SigningCredentials::from_p12(&p12_data, &p12_password)
-        .map_err(|e| anyhow!("Error al cargar credenciales del certificado .p12: {:?}", e))?;
-
-    let mut signer = zsign_rs::ZSign::new().credentials(credentials);
-    signer = signer.provisioning_profile(args.provision.clone());
-
-    // Si se especificó entitlements personalizado, advertir que en esta versión de zsign_rs se extraen automáticamente de la provisión.
-    if let Some(ref ent_path) = args.entitlements {
-        println!("Advertencia: Entitlements personalizado ({}) ignorado. zsign_rs los extrae automáticamente del perfil de provisión.", ent_path);
-    }
-
-    println!("Firmando la IPA con zsign_rs...");
-    signer.sign_ipa(&temp_modified_ipa_path, &args.output)
-        .map_err(|e| anyhow!("Fallo durante el proceso de firma criptográfica de zsign_rs: {:?}", e))?;
-
-    // Limpiar el archivo temporal de repaquetado
-    if let Err(e) = fs::remove_file(&temp_modified_ipa_path) {
-        println!("Advertencia: No se pudo eliminar el archivo temporal {}: {}", temp_modified_ipa_path, e);
-    }
-
-    println!("=== SpeedySigner completó la firma real con éxito ===");
+    println!("=== SpeedySigner completo la firma con exito ===");
     Ok(())
+}
+
+fn parse_args<I, S>(raw_args: I) -> Result<Args>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<OsString>,
+{
+    let mut args = Args::default();
+    let mut iter = raw_args.into_iter().map(Into::into).peekable();
+
+    while let Some(raw) = iter.next() {
+        let arg = raw.to_string_lossy().into_owned();
+        match arg.as_str() {
+            "-h" | "--help" => {
+                print_help();
+                std::process::exit(0);
+            }
+            "-v" | "--version" => {
+                println!("speedysigner-cli {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
+            "-k" | "--key" | "--pkey" => args.key = take_value(&mut iter, &arg)?,
+            "-p" | "--password" => args.password = Some(take_value(&mut iter, &arg)?),
+            "-m" | "--provision" | "--prov" => args.provision = take_value(&mut iter, &arg)?,
+            "-o" | "--output" => args.output = take_value(&mut iter, &arg)?,
+            "-b" | "--bundle-id" | "--bundle_id" => {
+                args.bundle_id = Some(take_value(&mut iter, &arg)?);
+            }
+            "-n" | "--name" | "--bundle-name" | "--bundle_name" => {
+                args.name = Some(take_value(&mut iter, &arg)?);
+            }
+            "-r" | "--version-name" | "--bundle-version" | "--bundle_version" => {
+                args.version = Some(take_value(&mut iter, &arg)?);
+            }
+            "-e" | "--entitlements" => args.entitlements = Some(take_value(&mut iter, &arg)?),
+            "-z" | "--compression" | "--zip-level" | "--zip_level" => {
+                let value = take_value(&mut iter, &arg)?;
+                args.compression = Some(
+                    value
+                        .parse::<u8>()
+                        .with_context(|| format!("Nivel de compresion invalido: {}", value))?,
+                );
+            }
+            "-l" | "--dylib" => args.dylib.push(take_value(&mut iter, &arg)?),
+            "-w" | "--weak" | "--weak-dylib" | "--weak_dylib" => {
+                args.weak_dylib.push(take_value(&mut iter, &arg)?);
+            }
+            "-2" | "--sha256_only" | "--sha256-only" => args.sha256_only = true,
+            _ if arg.starts_with('-') => bail!("Argumento no soportado: {}", arg),
+            _ => {
+                if args.input.is_empty() {
+                    args.input = arg;
+                } else {
+                    bail!(
+                        "Solo se permite una IPA de entrada. Argumento extra: {}",
+                        arg
+                    );
+                }
+            }
+        }
+    }
+
+    if args.key.is_empty() {
+        bail!("Falta el certificado: usa -k <certificado.p12>");
+    }
+    if args.provision.is_empty() {
+        bail!("Falta el provisioning profile: usa -m <perfil.mobileprovision>");
+    }
+    if args.output.is_empty() {
+        bail!("Falta la salida: usa -o <salida.ipa>");
+    }
+    if args.input.is_empty() {
+        bail!("Falta la IPA de entrada");
+    }
+
+    Ok(args)
+}
+
+impl Args {
+    fn to_sign_config(&self) -> SignConfig {
+        SignConfig {
+            input_path: self.input.clone(),
+            output_path: self.output.clone(),
+            p12_path: self.key.clone(),
+            p12_password: self.password.clone().unwrap_or_default(),
+            provision_path: self.provision.clone(),
+            bundle_id: self.bundle_id.clone(),
+            app_name: self.name.clone(),
+            version: self.version.clone(),
+            entitlements_path: self.entitlements.clone(),
+            sha256_only: self.sha256_only,
+            compression_level: self.compression,
+            dylib_paths: self.dylib.clone(),
+            weak_dylib_paths: self.weak_dylib.clone(),
+        }
+    }
+}
+
+fn take_value<I>(iter: &mut std::iter::Peekable<I>, flag: &str) -> Result<String>
+where
+    I: Iterator<Item = OsString>,
+{
+    let value = iter
+        .next()
+        .ok_or_else(|| anyhow!("{} requiere un valor", flag))?;
+    Ok(value.to_string_lossy().into_owned())
+}
+
+fn print_help() {
+    println!(
+        "SpeedySigner CLI\n\nUsage: speedysigner -k cert.p12 -p password -m profile.mobileprovision -o output.ipa [options] input.ipa\n\nOptions:\n  -k, --key <file>              Certificado .p12\n  -p, --password <password>     Contrasena del certificado\n  -m, --provision <file>        Provisioning profile\n  -o, --output <file>           IPA de salida\n  -b, --bundle-id <id>          Bundle ID nuevo\n  -n, --name <name>             Nombre visible nuevo\n  -r, --bundle-version <ver>    Version nueva\n  -e, --entitlements <file>     Entitlements personalizados\n  -z, --compression <0-9>       Nivel de compresion ZIP\n  -l, --dylib <file>            Inyecta una dylib\n  -w, --weak <file>             Inyecta una dylib debil\n  -2, --sha256-only             Firma solo con SHA-256"
+    );
+}
+
+fn validate_inputs(args: &Args) -> Result<()> {
+    ensure_file(&args.input, "IPA de entrada")?;
+    ensure_file(&args.key, "certificado")?;
+    ensure_file(&args.provision, "provisioning profile")?;
+
+    if let Some(ref entitlements) = args.entitlements {
+        ensure_file(entitlements, "entitlements")?;
+    }
+
+    if let Some(level) = args.compression {
+        if level > 9 {
+            bail!("El nivel de compresion debe estar entre 0 y 9");
+        }
+    }
+
+    for dylib in args.dylib.iter().chain(args.weak_dylib.iter()) {
+        ensure_file(dylib, "dylib")?;
+    }
+
+    if let Some(parent) = Path::new(&args.output).parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "No se pudo crear el directorio de salida {}",
+                    parent.display()
+                )
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+fn ensure_file(path: &str, label: &str) -> Result<()> {
+    let path = Path::new(path);
+    if !path.is_file() {
+        bail!(
+            "No se encontro el archivo de {} en {}",
+            label,
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_args() -> Args {
+        Args {
+            key: "cert.p12".into(),
+            password: Some("pass".into()),
+            provision: "profile.mobileprovision".into(),
+            output: "out.ipa".into(),
+            bundle_id: Some("com.example.app".into()),
+            name: Some("Example".into()),
+            version: Some("1.2.3".into()),
+            entitlements: Some("entitlements.plist".into()),
+            sha256_only: true,
+            compression: Some(0),
+            dylib: vec!["one.dylib".into()],
+            weak_dylib: vec!["weak.dylib".into()],
+            input: "in.ipa".into(),
+        }
+    }
+
+    #[test]
+    fn builds_native_sign_config_from_cli_args() {
+        let args = base_args();
+        let config = args.to_sign_config();
+
+        assert_eq!(config.p12_path, "cert.p12");
+        assert_eq!(config.p12_password, "pass");
+        assert_eq!(config.provision_path, "profile.mobileprovision");
+        assert_eq!(config.output_path, "out.ipa");
+        assert_eq!(config.bundle_id.as_deref(), Some("com.example.app"));
+        assert_eq!(config.app_name.as_deref(), Some("Example"));
+        assert_eq!(config.version.as_deref(), Some("1.2.3"));
+        assert_eq!(
+            config.entitlements_path.as_deref(),
+            Some("entitlements.plist")
+        );
+        assert_eq!(config.compression_level, Some(0));
+        assert_eq!(config.dylib_paths, vec!["one.dylib"]);
+        assert_eq!(config.weak_dylib_paths, vec!["weak.dylib"]);
+        assert!(config.sha256_only);
+        assert_eq!(config.input_path, "in.ipa");
+    }
 }

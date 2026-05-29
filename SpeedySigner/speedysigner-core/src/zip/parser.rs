@@ -43,13 +43,15 @@ impl<'a> ZipArchive<'a> {
         // Buscar el fin del directorio central (EOCD) desde el final del archivo
         let mut eocd_offset = None;
         for i in (0..=(len - 22)).rev() {
-            if data[i] == 0x50 && data[i + 1] == 0x4b && data[i + 2] == 0x05 && data[i + 3] == 0x06 {
+            if data[i] == 0x50 && data[i + 1] == 0x4b && data[i + 2] == 0x05 && data[i + 3] == 0x06
+            {
                 eocd_offset = Some(i);
                 break;
             }
         }
 
-        let eocd_idx = eocd_offset.ok_ok_or("No se encontró el final del directorio central (EOCD)")?;
+        let eocd_idx =
+            eocd_offset.ok_ok_or("No se encontró el final del directorio central (EOCD)")?;
 
         let num_entries = read_u16(data, eocd_idx + 10) as usize;
         let cd_size = read_u32(data, eocd_idx + 12) as usize;
