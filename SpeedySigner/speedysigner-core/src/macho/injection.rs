@@ -1,15 +1,34 @@
 /// Inyecta un comando de carga de dylib en un binario Mach-O (soportando FAT/Universal).
-pub fn inject_dylib(macho_bytes: &mut [u8], dylib_path: &str, weak: bool) -> Result<(), &'static str> {
+pub fn inject_dylib(
+    macho_bytes: &mut [u8],
+    dylib_path: &str,
+    weak: bool,
+) -> Result<(), &'static str> {
     if macho_bytes.len() < 8 {
         return Err("Binario demasiado corto");
     }
 
-    let magic = u32::from_le_bytes([macho_bytes[0], macho_bytes[1], macho_bytes[2], macho_bytes[3]]);
-    let magic_be = u32::from_be_bytes([macho_bytes[0], macho_bytes[1], macho_bytes[2], macho_bytes[3]]);
+    let magic = u32::from_le_bytes([
+        macho_bytes[0],
+        macho_bytes[1],
+        macho_bytes[2],
+        macho_bytes[3],
+    ]);
+    let magic_be = u32::from_be_bytes([
+        macho_bytes[0],
+        macho_bytes[1],
+        macho_bytes[2],
+        macho_bytes[3],
+    ]);
 
     if magic_be == 0xcafebabe {
         // Es un binario FAT (Universal)
-        let num_arches = u32::from_be_bytes([macho_bytes[4], macho_bytes[5], macho_bytes[6], macho_bytes[7]]) as usize;
+        let num_arches = u32::from_be_bytes([
+            macho_bytes[4],
+            macho_bytes[5],
+            macho_bytes[6],
+            macho_bytes[7],
+        ]) as usize;
         let mut current_arch_offset = 8;
 
         for _ in 0..num_arches {
@@ -61,18 +80,8 @@ fn inject_single_macho(macho: &mut [u8], dylib_path: &str, weak: bool) -> Result
     }
 
     // Leer número de comandos y tamaño total de comandos
-    let mut ncmds = u32::from_le_bytes([
-        macho[16],
-        macho[17],
-        macho[18],
-        macho[19],
-    ]);
-    let mut sizeofcmds = u32::from_le_bytes([
-        macho[20],
-        macho[21],
-        macho[22],
-        macho[23],
-    ]);
+    let mut ncmds = u32::from_le_bytes([macho[16], macho[17], macho[18], macho[19]]);
+    let mut sizeofcmds = u32::from_le_bytes([macho[20], macho[21], macho[22], macho[23]]);
 
     // Calcular tamaño de la nueva dylib command
     // dylib_command struct es de 24 bytes + largo de la ruta de la dylib, alineado a 8 bytes en 64-bit o 4 bytes en 32-bit
@@ -113,11 +122,11 @@ fn inject_single_macho(macho: &mut [u8], dylib_path: &str, weak: bool) -> Result
     cmd_bytes.extend_from_slice(&cmd_type.to_le_bytes());
     cmd_bytes.extend_from_slice(&(new_cmd_size as u32).to_le_bytes());
     cmd_bytes.extend_from_slice(&24u32.to_le_bytes()); // offset a la ruta = 24 bytes
-    cmd_bytes.extend_from_slice(&2u32.to_le_bytes());  // timestamp ficticio = 2
-    cmd_bytes.extend_from_slice(&0u32.to_le_bytes());  // version actual = 0.0.0
-    cmd_bytes.extend_from_slice(&0u32.to_le_bytes());  // version de compatibilidad = 0.0.0
+    cmd_bytes.extend_from_slice(&2u32.to_le_bytes()); // timestamp ficticio = 2
+    cmd_bytes.extend_from_slice(&0u32.to_le_bytes()); // version actual = 0.0.0
+    cmd_bytes.extend_from_slice(&0u32.to_le_bytes()); // version de compatibilidad = 0.0.0
     cmd_bytes.extend_from_slice(path_bytes);
-    
+
     // Rellenar con ceros hasta el tamaño alineado
     let padding_needed = new_cmd_size - cmd_bytes.len();
     for _ in 0..padding_needed {

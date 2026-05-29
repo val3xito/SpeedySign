@@ -1,6 +1,6 @@
-use std::io::Read;
-use flate2::read::DeflateDecoder;
 use super::parser::ZipEntry;
+use flate2::read::DeflateDecoder;
+use std::io::Read;
 
 pub fn decompress_entry(entry: &ZipEntry) -> Result<Vec<u8>, &'static str> {
     match entry.compression_method {

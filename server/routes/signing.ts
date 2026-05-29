@@ -515,7 +515,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
             await executeSign({
                 inputPath:        ipaToSign,
                 outputPath:       signedIpaPath,
-                bundleId,
+                bundleId:         customBundleId || bundleId,
                 p12Path:          p12PathToUse,
                 p12Pass:          p12PasswordToUse,
                 provisionPath:    provisionPathToUse,
