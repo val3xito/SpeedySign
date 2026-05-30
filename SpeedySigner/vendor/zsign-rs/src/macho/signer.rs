@@ -390,8 +390,11 @@ fn build_superblob(
         false,
     );
 
-    let cdhash_sha1: [u8; 20] = compute_cdhash_sha1(&cd_sha1);
-    let cdhash_sha256: [u8; 32] = compute_cdhash_sha256(&cd_sha256);
+    // Compute both CDHashes in a single pass (mirrors jveko/zsign-rs).
+    let (cdhash_sha1, cdhash_sha256) = (
+        compute_cdhash_sha1(&cd_sha1),
+        compute_cdhash_sha256(&cd_sha256),
+    );
 
     let (signing_key, signing_cert, cert_chain) = convert_credentials_for_cms(credentials)?;
 
