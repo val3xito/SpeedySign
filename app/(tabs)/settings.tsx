@@ -274,7 +274,7 @@ export default function SettingsScreen() {
                             opacity: pressed ? 0.75 : 1,
                             flexDirection: "column",
                             alignItems: "center",
-                            justifyContent: "center",
+                            justifyContent: "flex-start",
                             flex: 1,
                         })}
                     >
@@ -310,7 +310,6 @@ export default function SettingsScreen() {
                                     lineHeight: 14,
                                     textAlign: "center",
                                 }}
-                                numberOfLines={2}
                             >
                                 {t("settings.telegramDescShort", "Descarga repositorios (.json) y entérate de novedades.")}
                             </Text>
@@ -331,7 +330,7 @@ export default function SettingsScreen() {
                             opacity: pressed ? 0.75 : 1,
                             flexDirection: "column",
                             alignItems: "center",
-                            justifyContent: "center",
+                            justifyContent: "flex-start",
                             flex: 1,
                         })}
                     >
@@ -367,7 +366,6 @@ export default function SettingsScreen() {
                                     lineHeight: 14,
                                     textAlign: "center",
                                 }}
-                                numberOfLines={2}
                             >
                                 {t("settings.redditDescShort", "Visita nuestra comunidad oficial r/SpeedySign en Reddit.")}
                             </Text>
