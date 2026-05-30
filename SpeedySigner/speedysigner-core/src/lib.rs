@@ -8,5 +8,5 @@ pub mod zip;
 pub use macho::{inject_dylib, parse_macho};
 pub use plist::PlistEditor;
 pub use signature::AppleSigner;
-pub use signer::{extract_macho_from_ipa, sign_ipa, SignConfig};
+pub use signer::{extract_macho_from_ipa, sign_ipa, verify_ipa, SignConfig};
 pub use zip::{ZipArchive, ZipEntry, ZipWriter};

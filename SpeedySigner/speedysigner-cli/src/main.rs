@@ -1,5 +1,5 @@
 use anyhow::{anyhow, bail, Context, Result};
-use speedysigner_core::{sign_ipa, SignConfig};
+use speedysigner_core::{sign_ipa, verify_ipa, SignConfig};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -7,6 +7,7 @@ use std::path::Path;
 
 #[derive(Debug, Default)]
 struct Args {
+    verify: bool,
     key: String,
     password: Option<String>,
     provision: String,
@@ -25,6 +26,18 @@ struct Args {
 fn main() -> Result<()> {
     let args = parse_args(env::args().skip(1))?;
     println!("=== SpeedySigner CLI ===");
+
+    if args.verify {
+        println!("Modo: verificacion real");
+        println!("IPA: {}", args.input);
+        println!("Provision: {}", args.provision);
+        validate_inputs(&args)?;
+        verify_ipa(&args.input, &args.provision, args.bundle_id.as_deref())
+            .map_err(|err| anyhow!(err))?;
+        println!("=== SpeedySigner verifico la IPA con exito ===");
+        return Ok(());
+    }
+
     println!("Entrada: {}", args.input);
     println!("Salida: {}", args.output);
     println!("Certificado: {}", args.key);
@@ -51,6 +64,7 @@ where
     while let Some(raw) = iter.next() {
         let arg = raw.to_string_lossy().into_owned();
         match arg.as_str() {
+            "verify" | "--verify" => args.verify = true,
             "-h" | "--help" => {
                 print_help();
                 std::process::exit(0);
@@ -98,6 +112,16 @@ where
                 }
             }
         }
+    }
+
+    if args.verify {
+        if args.provision.is_empty() {
+            bail!("Falta el provisioning profile: usa -m <perfil.mobileprovision>");
+        }
+        if args.input.is_empty() {
+            bail!("Falta la IPA a verificar");
+        }
+        return Ok(args);
     }
 
     if args.key.is_empty() {
@@ -148,14 +172,19 @@ where
 
 fn print_help() {
     println!(
-        "SpeedySigner CLI\n\nUsage: speedysigner -k cert.p12 -p password -m profile.mobileprovision -o output.ipa [options] input.ipa\n\nOptions:\n  -k, --key <file>              Certificado .p12\n  -p, --password <password>     Contrasena del certificado\n  -m, --provision <file>        Provisioning profile\n  -o, --output <file>           IPA de salida\n  -b, --bundle-id <id>          Bundle ID nuevo\n  -n, --name <name>             Nombre visible nuevo\n  -r, --bundle-version <ver>    Version nueva\n  -e, --entitlements <file>     Entitlements personalizados\n  -z, --compression <0-9>       Nivel de compresion ZIP\n  -l, --dylib <file>            Inyecta una dylib\n  -w, --weak <file>             Inyecta una dylib debil\n  -2, --sha256-only             Firma solo con SHA-256"
+        "SpeedySigner CLI\n\nUsage:\n  speedysigner -k cert.p12 -p password -m profile.mobileprovision -o output.ipa [options] input.ipa\n  speedysigner --verify -m profile.mobileprovision [-b bundle.id] signed.ipa\n\nOptions:\n  --verify                      Verifica una IPA ya firmada\n  -k, --key <file>              Certificado .p12\n  -p, --password <password>     Contrasena del certificado\n  -m, --provision <file>        Provisioning profile\n  -o, --output <file>           IPA de salida\n  -b, --bundle-id <id>          Bundle ID esperado\n  -n, --name <name>             Nombre visible nuevo\n  -r, --bundle-version <ver>    Version nueva\n  -e, --entitlements <file>     Entitlements personalizados\n  -z, --compression <0-9>       Nivel de compresion ZIP\n  -l, --dylib <file>            Inyecta una dylib\n  -w, --weak <file>             Inyecta una dylib debil\n  -2, --sha256-only             Firma solo con SHA-256"
     );
 }
 
 fn validate_inputs(args: &Args) -> Result<()> {
     ensure_file(&args.input, "IPA de entrada")?;
-    ensure_file(&args.key, "certificado")?;
     ensure_file(&args.provision, "provisioning profile")?;
+
+    if args.verify {
+        return Ok(());
+    }
+
+    ensure_file(&args.key, "certificado")?;
 
     if let Some(ref entitlements) = args.entitlements {
         ensure_file(entitlements, "entitlements")?;
@@ -203,6 +232,7 @@ mod tests {
 
     fn base_args() -> Args {
         Args {
+            verify: false,
             key: "cert.p12".into(),
             password: Some("pass".into()),
             provision: "profile.mobileprovision".into(),
@@ -240,5 +270,25 @@ mod tests {
         assert_eq!(config.weak_dylib_paths, vec!["weak.dylib"]);
         assert!(config.sha256_only);
         assert_eq!(config.input_path, "in.ipa");
+    }
+
+    #[test]
+    fn parses_verify_mode_without_certificate_or_output() {
+        let args = parse_args([
+            "--verify",
+            "-m",
+            "profile.mobileprovision",
+            "-b",
+            "com.example.app",
+            "signed.ipa",
+        ])
+        .unwrap();
+
+        assert!(args.verify);
+        assert_eq!(args.provision, "profile.mobileprovision");
+        assert_eq!(args.bundle_id.as_deref(), Some("com.example.app"));
+        assert_eq!(args.input, "signed.ipa");
+        assert!(args.key.is_empty());
+        assert!(args.output.is_empty());
     }
 }
