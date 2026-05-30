@@ -75,8 +75,8 @@ const SHA256_OID: &[u8] = &[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01
 
 /// SHA-1 algorithm OID: `1.3.14.3.2.26`
 ///
-/// Standard OID identifying the SHA-1 hash algorithm, used in CDHash v2
-/// attributes to specify the hash algorithm.
+/// Not used in CDHash v2 (v2 is SHA-256 only). Kept for potential future use / tests.
+#[allow(dead_code)]
 const SHA1_OID: &[u8] = &[0x2b, 0x0e, 0x03, 0x02, 0x1a];
 
 /// Generates a CMS signature with Apple CDHash attributes.
@@ -124,8 +124,10 @@ pub fn sign_with_apple_attrs<K: KeyInfoSigner>(
     cdhash_sha256: &[u8; 32],
 ) -> Result<Vec<u8>> {
     let cdhash_plist = build_cdhash_plist(cdhash_sha1, cdhash_sha256);
+
+    // CDHash v2 contains ONLY SHA-256 (per Apple TN3126 spec).
+    // SHA-1 is included in the CDHash v1 plist, not in v2.
     let cdhash_v2_sha256_value = build_cdhash_v2_entry(SHA256_OID, cdhash_sha256);
-    let cdhash_v2_sha1_value = build_cdhash_v2_entry(SHA1_OID, cdhash_sha1);
 
     let cdhash_v1_oid = Oid(cryptographic_message_syntax::Bytes::copy_from_slice(
         APPLE_CDHASH_OID,
@@ -144,17 +146,10 @@ pub fn sign_with_apple_attrs<K: KeyInfoSigner>(
         CdHashV2Encoder(&cdhash_v2_sha256_value),
     ));
 
-    let cdhash_v2_sha1_attr_value = AttributeValue::new(Captured::from_values(
-        Mode::Der,
-        CdHashV2Encoder(&cdhash_v2_sha1_value),
-    ));
-
+    // CDHash v2: only SHA-256 (matches jveko/zsign-rs and Apple's spec).
     let signer = SignerBuilder::new(signing_key, signing_cert.clone())
         .signed_attribute(cdhash_v1_oid, vec![cdhash_v1_attr_value])
-        .signed_attribute(
-            cdhash_v2_oid,
-            vec![cdhash_v2_sha1_attr_value, cdhash_v2_sha256_attr_value],
-        );
+        .signed_attribute(cdhash_v2_oid, vec![cdhash_v2_sha256_attr_value]);
 
     let mut builder = SignedDataBuilder::default()
         .content_external(data.to_vec())
@@ -203,22 +198,7 @@ pub fn build_cdhash_plist(sha1: &[u8; 20], sha256: &[u8; 32]) -> Vec<u8> {
     buf
 }
 
-/// Builds the CDHash v2 attribute value as DER-encoded ASN.1.
-///
-/// Returns a SEQUENCE containing the SHA-256 algorithm OID and the full
-/// 32-byte hash value.
-///
-/// # ASN.1 Structure
-///
-/// ```text
-/// CDHashV2 ::= SEQUENCE {
-///     algorithm  OBJECT IDENTIFIER,
-///     hash       OCTET STRING
-/// }
-/// ```
-fn build_cdhash_v2_attribute(cdhash_sha256: &[u8; 32]) -> Vec<u8> {
-    build_cdhash_v2_entry(SHA256_OID, cdhash_sha256)
-}
+// build_cdhash_v2_attribute was removed — call build_cdhash_v2_entry(SHA256_OID, hash) directly.
 
 /// Helper function to build a CDHash v2 SEQUENCE entry.
 fn build_cdhash_v2_entry(alg_oid: &[u8], hash: &[u8]) -> Vec<u8> {

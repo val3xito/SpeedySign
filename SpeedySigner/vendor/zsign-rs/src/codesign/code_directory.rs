@@ -38,6 +38,87 @@ use rayon::prelude::*;
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
 
+/// Pre-computed page hashes for both SHA-1 and SHA-256.
+///
+/// Avoids hashing each code page twice by computing both algorithms
+/// in a single pass over the data. Mirrors jveko/zsign-rs `DualPageHashes`.
+pub struct DualPageHashes {
+    /// SHA-1 hash of each 4KB code page, concatenated.
+    pub sha1: Vec<u8>,
+    /// SHA-256 hash of each 4KB code page, concatenated.
+    pub sha256: Vec<u8>,
+}
+
+/// Minimum code size to enable parallel hashing (1 MB).
+/// Below this threshold, rayon scheduling overhead exceeds the gain.
+const PARALLEL_HASH_THRESHOLD: usize = 1024 * 1024;
+
+/// Number of pages per parallel hashing stripe (128 pages × 4KB = 512KB).
+const HASH_STRIPE_PAGES: usize = 128;
+
+/// Stripe size for parallel hashing.
+/// MUST be a multiple of PAGE_SIZE to preserve hash equivalence with sequential.
+const HASH_STRIPE_SIZE: usize = HASH_STRIPE_PAGES * PAGE_SIZE;
+
+/// Hash all code pages with both SHA-1 and SHA-256 in a single pass.
+///
+/// For binaries ≥ 1MB, pages are hashed in parallel using rayon with
+/// coarse-grained stripes (512KB each). This avoids traversing the code twice.
+pub fn hash_code_pages_dual(code: &[u8]) -> DualPageHashes {
+    if code.is_empty() {
+        return DualPageHashes {
+            sha1: Vec::new(),
+            sha256: Vec::new(),
+        };
+    }
+
+    if code.len() < PARALLEL_HASH_THRESHOLD {
+        return hash_code_pages_dual_seq(code);
+    }
+
+    // Split into coarse stripes for parallel hashing
+    let stripe_hashes: Vec<DualPageHashes> = code
+        .par_chunks(HASH_STRIPE_SIZE)
+        .map(hash_code_pages_dual_seq)
+        .collect();
+
+    // Concatenate results in order
+    let total_pages = code.len().div_ceil(PAGE_SIZE);
+    let mut sha1_hashes = Vec::with_capacity(total_pages * CS_SHA1_LEN);
+    let mut sha256_hashes = Vec::with_capacity(total_pages * CS_SHA256_LEN);
+
+    for part in stripe_hashes {
+        sha1_hashes.extend_from_slice(&part.sha1);
+        sha256_hashes.extend_from_slice(&part.sha256);
+    }
+
+    DualPageHashes {
+        sha1: sha1_hashes,
+        sha256: sha256_hashes,
+    }
+}
+
+/// Sequential dual-hash implementation for a contiguous code region.
+fn hash_code_pages_dual_seq(code: &[u8]) -> DualPageHashes {
+    let chunks = code.len().div_ceil(PAGE_SIZE);
+    let mut sha1_hashes = Vec::with_capacity(chunks * CS_SHA1_LEN);
+    let mut sha256_hashes = Vec::with_capacity(chunks * CS_SHA256_LEN);
+
+    for chunk in code.chunks(PAGE_SIZE) {
+        let mut h1 = Sha1::new();
+        let mut h256 = Sha256::new();
+        h1.update(chunk);
+        h256.update(chunk);
+        sha1_hashes.extend_from_slice(&h1.finalize());
+        sha256_hashes.extend_from_slice(&h256.finalize());
+    }
+
+    DualPageHashes {
+        sha1: sha1_hashes,
+        sha256: sha256_hashes,
+    }
+}
+
 /// CodeDirectory header size for version 0x20400 (with exec segment fields).
 const CODEDIRECTORY_HEADER_SIZE: u32 = 88;
 
@@ -440,6 +521,17 @@ pub fn compute_cdhash_sha256(code_directory: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(code_directory);
     hasher.finalize().into()
+}
+
+/// Compute both CDHashes in one call.
+///
+/// Returns `(cdhash_sha1, cdhash_sha256)` to avoid hashing the same
+/// CodeDirectory bytes twice when building CMS signatures.
+pub fn compute_cdhash_dual(code_directory: &[u8]) -> ([u8; 20], [u8; 32]) {
+    (
+        compute_cdhash_sha1(code_directory),
+        compute_cdhash_sha256(code_directory),
+    )
 }
 
 #[cfg(test)]
