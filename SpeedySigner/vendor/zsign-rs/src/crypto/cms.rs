@@ -86,7 +86,9 @@ const SHA1_OID: &[u8] = &[0x2b, 0x0e, 0x03, 0x02, 0x1a];
 ///
 /// # Arguments
 ///
-/// * `data` - The CodeDirectory DER bytes to sign
+/// * `data` - The **SHA-256** CodeDirectory bytes (primary CD). The CMS message
+///            digest is computed from this. Passing the SHA-1 CD produces an
+///            invalid signature that iOS rejects.
 /// * `signing_key` - Private key implementing [`KeyInfoSigner`]
 /// * `signing_cert` - X.509 certificate corresponding to the signing key
 /// * `cert_chain` - Intermediate CA certificates for chain verification
