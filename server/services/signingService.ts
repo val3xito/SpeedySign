@@ -291,9 +291,9 @@ export async function executeSign(
     if (options.customName)         console.log(`  📝 Nombre: ${options.customName}`);
     if (options.customVersion)      console.log(`  🏷️  Versión: ${options.customVersion}`);
 
-    const tryZsign        = async () => { try { await runTool(ZSIGN_PATH,        await getFallbackArgs(), 'zsign',        signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
-    const tryArksign      = async () => { try { await runTool(ARKSIGN_PATH,      await getFallbackArgs(), 'arksign',      signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
-    const trySpeedysigner = async () => { try { await runTool(SPEEDYSIGNER_PATH, speedysignerArgs,       'speedysigner', signal); await verifySignedOutput(options, signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
+    const tryZsign        = async () => { try { await runTool(ZSIGN_PATH,        await getFallbackArgs(), 'zsign',        signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; console.warn(`  [SpeedySign] Fallo en zsign: ${e.message}`); errors.push(e.message); return false; } };
+    const tryArksign      = async () => { try { await runTool(ARKSIGN_PATH,      await getFallbackArgs(), 'arksign',      signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; console.warn(`  [SpeedySign] Fallo en arksign: ${e.message}`); errors.push(e.message); return false; } };
+    const trySpeedysigner = async () => { try { await runTool(SPEEDYSIGNER_PATH, speedysignerArgs,       'speedysigner', signal); await verifySignedOutput(options, signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; console.warn(`  [SpeedySign] Fallo en speedysigner: ${e.message}`); errors.push(e.message); return false; } };
 
     const zsignAvailable        = fs.existsSync(ZSIGN_PATH);
     const arksignAvailable      = fs.existsSync(ARKSIGN_PATH);
