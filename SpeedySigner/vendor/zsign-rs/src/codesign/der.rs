@@ -135,7 +135,7 @@ fn encode_value(value: &Value) -> Vec<u8> {
         }
         Value::Dictionary(dict) => {
             // Build SET content from key-value pairs
-            let mut set_content = Vec::new();
+            let mut pairs = Vec::new();
 
             for (key, val) in dict {
                 let encoded_val = encode_value(val);
@@ -150,11 +150,22 @@ fn encode_value(value: &Value) -> Vec<u8> {
                 // Build the pair content
                 let pair_len = key_encoded.len() + encoded_val.len();
 
+                let mut pair = Vec::new();
                 // Pair header: SEQUENCE tag + length
-                set_content.push(DER_TAG_SEQUENCE);
-                encode_length(&mut set_content, pair_len);
-                set_content.extend(key_encoded);
-                set_content.extend(encoded_val);
+                pair.push(DER_TAG_SEQUENCE);
+                encode_length(&mut pair, pair_len);
+                pair.extend(key_encoded);
+                pair.extend(encoded_val);
+
+                pairs.push(pair);
+            }
+
+            // Sort pairs lexicographically by their encoded bytes
+            pairs.sort();
+
+            let mut set_content = Vec::new();
+            for pair in pairs {
+                set_content.extend(pair);
             }
 
             output.push(DER_TAG_SET);
@@ -340,5 +351,29 @@ mod tests {
         let der = encode_value(&value);
         // Should be: 0x02 (INTEGER), 0x02 (length=2), 0x00, 0xFF
         assert_eq!(der, vec![0x02, 0x02, 0x00, 0xFF]);
+    }
+
+    #[test]
+    fn test_dictionary_sorting() {
+        use plist::Dictionary;
+
+        let mut dict = Dictionary::new();
+        // Insert "b" then "a" to verify they are sorted lexicographically in DER
+        dict.insert("b".to_string(), Value::Boolean(true));
+        dict.insert("a".to_string(), Value::Boolean(true));
+
+        let der = encode_value(&Value::Dictionary(dict));
+        
+        // SET header: 0x31, length
+        assert_eq!(der[0], 0x31);
+
+        // Within the SET content, sequence for "a" must come first:
+        // SEQUENCE (0x30) -> length -> UTF8String (0x0C) -> length (1) -> "a" -> Boolean (0x01) -> length (1) -> true (0x01)
+        // Let's find the position of the key "a" (0x61) and key "b" (0x62) in the bytes.
+        let pos_a = der.iter().position(|&x| x == b'a').unwrap();
+        let pos_b = der.iter().position(|&x| x == b'b').unwrap();
+        
+        // Since "a" (0x61) is lexicographically smaller than "b" (0x62), "a" should appear first.
+        assert!(pos_a < pos_b);
     }
 }

@@ -231,14 +231,19 @@ pub fn create_ipa(
                 .map_err(Error::Zip)?;
         } else {
             // Regular file
+            let mut file_options = options;
             #[cfg(unix)]
-            let options = {
+            {
                 use std::os::unix::fs::PermissionsExt;
                 let mode = metadata.permissions().mode();
-                options.unix_permissions(mode)
-            };
+                file_options = file_options.unix_permissions(mode);
+            }
 
-            zip.start_file(&archive_path, options).map_err(Error::Zip)?;
+            if compression_level.level() == 0 {
+                file_options = file_options.with_alignment(4096);
+            }
+
+            zip.start_file(&archive_path, file_options).map_err(Error::Zip)?;
 
             // Stream file directly without loading into memory
             let mut file = File::open(path)?;
@@ -338,6 +343,25 @@ mod tests {
         let result = create_ipa(&app_bundle, &output_ipa, CompressionLevel::NONE);
         assert!(result.is_ok(), "Failed: {:?}", result.err());
         assert!(output_ipa.exists());
+
+        // Verify the IPA structure and check that regular files are 4096-byte aligned
+        let file = File::open(&output_ipa).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+
+        for i in 0..archive.len() {
+            let entry = archive.by_index(i).unwrap();
+            // In zip 7.0, ZipFile has is_file() or we can check if it ends with /
+            if !entry.name().ends_with('/') {
+                let start_offset = entry.data_start();
+                assert_eq!(
+                    start_offset % 4096,
+                    0,
+                    "File {} start offset ({}) is not aligned to 4096 bytes",
+                    entry.name(),
+                    start_offset
+                );
+            }
+        }
     }
 
     #[test]
