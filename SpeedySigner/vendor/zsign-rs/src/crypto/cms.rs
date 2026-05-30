@@ -73,6 +73,12 @@ pub const APPLE_CDHASH_V2_OID: &[u8] = &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x63, 0x6
 /// attributes to specify the hash algorithm.
 const SHA256_OID: &[u8] = &[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01];
 
+/// SHA-1 algorithm OID: `1.3.14.3.2.26`
+///
+/// Standard OID identifying the SHA-1 hash algorithm, used in CDHash v2
+/// attributes to specify the hash algorithm.
+const SHA1_OID: &[u8] = &[0x2b, 0x0e, 0x03, 0x02, 0x1a];
+
 /// Generates a CMS signature with Apple CDHash attributes.
 ///
 /// Creates a PKCS#7/CMS signed data structure containing the CodeDirectory
@@ -118,7 +124,8 @@ pub fn sign_with_apple_attrs<K: KeyInfoSigner>(
     cdhash_sha256: &[u8; 32],
 ) -> Result<Vec<u8>> {
     let cdhash_plist = build_cdhash_plist(cdhash_sha1, cdhash_sha256);
-    let cdhash_v2_value = build_cdhash_v2_attribute(cdhash_sha256);
+    let cdhash_v2_sha256_value = build_cdhash_v2_entry(SHA256_OID, cdhash_sha256);
+    let cdhash_v2_sha1_value = build_cdhash_v2_entry(SHA1_OID, cdhash_sha1);
 
     let cdhash_v1_oid = Oid(cryptographic_message_syntax::Bytes::copy_from_slice(
         APPLE_CDHASH_OID,
@@ -132,14 +139,22 @@ pub fn sign_with_apple_attrs<K: KeyInfoSigner>(
         OctetString::encode_slice(&cdhash_plist),
     ));
 
-    let cdhash_v2_attr_value = AttributeValue::new(Captured::from_values(
+    let cdhash_v2_sha256_attr_value = AttributeValue::new(Captured::from_values(
         Mode::Der,
-        CdHashV2Encoder(&cdhash_v2_value),
+        CdHashV2Encoder(&cdhash_v2_sha256_value),
+    ));
+
+    let cdhash_v2_sha1_attr_value = AttributeValue::new(Captured::from_values(
+        Mode::Der,
+        CdHashV2Encoder(&cdhash_v2_sha1_value),
     ));
 
     let signer = SignerBuilder::new(signing_key, signing_cert.clone())
         .signed_attribute(cdhash_v1_oid, vec![cdhash_v1_attr_value])
-        .signed_attribute(cdhash_v2_oid, vec![cdhash_v2_attr_value]);
+        .signed_attribute(
+            cdhash_v2_oid,
+            vec![cdhash_v2_sha256_attr_value, cdhash_v2_sha1_attr_value],
+        );
 
     let mut builder = SignedDataBuilder::default()
         .content_external(data.to_vec())
@@ -202,20 +217,25 @@ pub fn build_cdhash_plist(sha1: &[u8; 20], sha256: &[u8; 32]) -> Vec<u8> {
 /// }
 /// ```
 fn build_cdhash_v2_attribute(cdhash_sha256: &[u8; 32]) -> Vec<u8> {
+    build_cdhash_v2_entry(SHA256_OID, cdhash_sha256)
+}
+
+/// Helper function to build a CDHash v2 SEQUENCE entry.
+fn build_cdhash_v2_entry(alg_oid: &[u8], hash: &[u8]) -> Vec<u8> {
     let mut oid = Vec::new();
-    oid.push(0x06);
-    oid.push(SHA256_OID.len() as u8);
-    oid.extend_from_slice(SHA256_OID);
+    oid.push(0x06); // OID tag
+    oid.push(alg_oid.len() as u8);
+    oid.extend_from_slice(alg_oid);
 
     let mut hash_octet = Vec::new();
-    hash_octet.push(0x04);
-    hash_octet.push(cdhash_sha256.len() as u8);
-    hash_octet.extend_from_slice(cdhash_sha256);
+    hash_octet.push(0x04); // OCTET STRING tag
+    hash_octet.push(hash.len() as u8);
+    hash_octet.extend_from_slice(hash);
 
     let inner_len = oid.len() + hash_octet.len();
 
     let mut result = Vec::new();
-    result.push(0x30);
+    result.push(0x30); // SEQUENCE tag
     result.push(inner_len as u8);
     result.extend_from_slice(&oid);
     result.extend_from_slice(&hash_octet);
