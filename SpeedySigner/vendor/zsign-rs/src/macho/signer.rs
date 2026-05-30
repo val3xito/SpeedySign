@@ -399,7 +399,7 @@ fn build_superblob(
     let (signing_key, signing_cert, cert_chain) = convert_credentials_for_cms(credentials)?;
 
     let cms_data = cms::sign_with_apple_attrs(
-        &cd_sha1,
+        &cd_sha256, // CMS signs the SHA-256 CodeDirectory (primary). cd_sha1 was wrong.
         &signing_key,
         &signing_cert,
         &cert_chain,
