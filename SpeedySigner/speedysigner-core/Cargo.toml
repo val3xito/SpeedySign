@@ -15,4 +15,4 @@ crc32fast = "1.3.2"
 hex = "0.4.3"
 
 [target.'cfg(not(windows))'.dependencies]
-zsign = { package = "zsign-rs", version = "0.1.1" }
+zsign = { package = "zsign-rs", path = "../vendor/zsign-rs" }

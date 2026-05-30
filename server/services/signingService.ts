@@ -30,6 +30,7 @@ const ZSIGN_PATH   = path.join(BIN_DIR, process.platform === 'win32' ? 'zsign.ex
 const ARKSIGN_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'arksign.exe' : 'arksign');
 const SPEEDYSIGNER_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'speedysigner.exe' : 'speedysigner');
 const ENABLE_SPEEDYSIGNER_EXPERIMENTAL = process.env.ENABLE_SPEEDYSIGNER_EXPERIMENTAL === 'true';
+const REQUIRE_SIGNING_VERIFICATION = process.env.DISABLE_SIGNING_VERIFICATION !== 'true';
 const SENSITIVE_ARG_FLAGS = new Set(['-k', '-p', '-m', '-o', '-e', '-l', '-w']);
 
 export type SignerType = 'auto' | 'zsign' | 'arksign' | 'speedysigner';
@@ -209,6 +210,19 @@ function runTool(toolPath: string, args: string[], toolName: string, signal?: Ab
     });
 }
 
+async function verifySignedOutput(opts: SignOptions, signal?: AbortSignal): Promise<void> {
+    if (!REQUIRE_SIGNING_VERIFICATION) return;
+
+    const verifierArgs = [
+        '--verify',
+        '-m', opts.provisionPath,
+        ...(opts.bundleId ? ['-b', opts.bundleId] : []),
+        opts.outputPath,
+    ];
+
+    await runTool(SPEEDYSIGNER_PATH, verifierArgs, 'speedysigner-verify', signal);
+}
+
 /**
  * Construye los argumentos CLI para zsign / arksign.
  * Ambas herramientas comparten la misma sintaxis básica.
@@ -277,9 +291,9 @@ export async function executeSign(
     if (options.customName)         console.log(`  📝 Nombre: ${options.customName}`);
     if (options.customVersion)      console.log(`  🏷️  Versión: ${options.customVersion}`);
 
-    const tryZsign        = async () => { try { await runTool(ZSIGN_PATH,        await getFallbackArgs(), 'zsign',        signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
-    const tryArksign      = async () => { try { await runTool(ARKSIGN_PATH,      await getFallbackArgs(), 'arksign',      signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
-    const trySpeedysigner = async () => { try { await runTool(SPEEDYSIGNER_PATH, speedysignerArgs,       'speedysigner', signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
+    const tryZsign        = async () => { try { await runTool(ZSIGN_PATH,        await getFallbackArgs(), 'zsign',        signal); await verifySignedOutput(options, signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
+    const tryArksign      = async () => { try { await runTool(ARKSIGN_PATH,      await getFallbackArgs(), 'arksign',      signal); await verifySignedOutput(options, signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
+    const trySpeedysigner = async () => { try { await runTool(SPEEDYSIGNER_PATH, speedysignerArgs,       'speedysigner', signal); await verifySignedOutput(options, signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
 
     const zsignAvailable        = fs.existsSync(ZSIGN_PATH);
     const arksignAvailable      = fs.existsSync(ARKSIGN_PATH);
