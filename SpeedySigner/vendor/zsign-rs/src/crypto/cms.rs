@@ -153,7 +153,7 @@ pub fn sign_with_apple_attrs<K: KeyInfoSigner>(
         .signed_attribute(cdhash_v1_oid, vec![cdhash_v1_attr_value])
         .signed_attribute(
             cdhash_v2_oid,
-            vec![cdhash_v2_sha256_attr_value, cdhash_v2_sha1_attr_value],
+            vec![cdhash_v2_sha1_attr_value, cdhash_v2_sha256_attr_value],
         );
 
     let mut builder = SignedDataBuilder::default()
