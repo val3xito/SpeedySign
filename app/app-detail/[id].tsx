@@ -101,10 +101,7 @@ export default function AppDetailScreen() {
 
     React.useEffect(() => {
         AsyncStorage.getItem('signer_pref').then((val) => {
-            if (val === "speedysigner") {
-                AsyncStorage.setItem('signer_pref', "auto");
-                setSignerPreference("auto");
-            } else if (val === "auto" || val === "zsign" || val === "arksign") {
+            if (val === "auto" || val === "zsign" || val === "arksign" || val === "speedysigner") {
                 setSignerPreference(val as any);
             }
         });
@@ -880,9 +877,8 @@ export default function AppDetailScreen() {
                         <Pressable 
                             style={{marginTop: 15, alignSelf: 'center'}}
                             onPress={() => {
-                                const signers: Array<"auto" | "zsign" | "arksign"> = ["auto", "zsign", "arksign"];
-                                const currentSigner = signerPreference === "speedysigner" ? "auto" : signerPreference;
-                                const nextIdx = (signers.indexOf(currentSigner) + 1) % signers.length;
+                                const signers: Array<"auto" | "zsign" | "arksign" | "speedysigner"> = ["auto", "zsign", "arksign", "speedysigner"];
+                                const nextIdx = (signers.indexOf(signerPreference) + 1) % signers.length;
                                 const nextVal = signers[nextIdx];
                                 setSignerPreference(nextVal);
                                 AsyncStorage.setItem('signer_pref', nextVal);

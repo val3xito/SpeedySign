@@ -259,10 +259,7 @@ export default function LibraryScreen() {
         useCallback(() => {
             reload();
             AsyncStorage.getItem('signer_pref').then((val) => {
-                if (val === "speedysigner") {
-                    AsyncStorage.setItem('signer_pref', "auto");
-                    setSignerPreference("auto");
-                } else if (val === "auto" || val === "zsign" || val === "arksign") {
+                if (val === "auto" || val === "zsign" || val === "arksign" || val === "speedysigner") {
                     setSignerPreference(val as any);
                 }
             });

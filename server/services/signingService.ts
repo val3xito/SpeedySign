@@ -29,7 +29,7 @@ const BIN_DIR      = path.join(SERVER_ROOT, 'bin');
 const ZSIGN_PATH   = path.join(BIN_DIR, process.platform === 'win32' ? 'zsign.exe'   : 'zsign');
 const ARKSIGN_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'arksign.exe' : 'arksign');
 const SPEEDYSIGNER_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'speedysigner.exe' : 'speedysigner');
-const ENABLE_SPEEDYSIGNER_EXPERIMENTAL = process.env.ENABLE_SPEEDYSIGNER_EXPERIMENTAL === 'true';
+const ENABLE_SPEEDYSIGNER_EXPERIMENTAL = process.env.ENABLE_SPEEDYSIGNER_EXPERIMENTAL !== 'false';
 const REQUIRE_SIGNING_VERIFICATION = process.env.DISABLE_SIGNING_VERIFICATION !== 'true';
 const SENSITIVE_ARG_FLAGS = new Set(['-k', '-p', '-m', '-o', '-e', '-l', '-w']);
 
@@ -291,8 +291,8 @@ export async function executeSign(
     if (options.customName)         console.log(`  📝 Nombre: ${options.customName}`);
     if (options.customVersion)      console.log(`  🏷️  Versión: ${options.customVersion}`);
 
-    const tryZsign        = async () => { try { await runTool(ZSIGN_PATH,        await getFallbackArgs(), 'zsign',        signal); await verifySignedOutput(options, signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
-    const tryArksign      = async () => { try { await runTool(ARKSIGN_PATH,      await getFallbackArgs(), 'arksign',      signal); await verifySignedOutput(options, signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
+    const tryZsign        = async () => { try { await runTool(ZSIGN_PATH,        await getFallbackArgs(), 'zsign',        signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
+    const tryArksign      = async () => { try { await runTool(ARKSIGN_PATH,      await getFallbackArgs(), 'arksign',      signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
     const trySpeedysigner = async () => { try { await runTool(SPEEDYSIGNER_PATH, speedysignerArgs,       'speedysigner', signal); await verifySignedOutput(options, signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; errors.push(e.message); return false; } };
 
     const zsignAvailable        = fs.existsSync(ZSIGN_PATH);

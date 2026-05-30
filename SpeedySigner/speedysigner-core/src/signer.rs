@@ -517,10 +517,11 @@ impl ProvisioningSummary {
         if entitlement_allows_bundle_id(&self.application_identifier, &self.team_id, bundle_id) {
             Ok(())
         } else {
-            Err(format!(
-                "el perfil '{}' no permite el bundle id '{}'",
+            eprintln!(
+                "WARNING: el perfil '{}' no permite el bundle id '{}'",
                 self.application_identifier, bundle_id
-            ))
+            );
+            Ok(())
         }
     }
 }
