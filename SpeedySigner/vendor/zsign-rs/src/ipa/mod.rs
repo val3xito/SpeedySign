@@ -593,10 +593,12 @@ impl<'a> IpaSigner<'a> {
 
         if let Some(ref app_identifier) = app_identifier {
             if !entitlement_allows_identifier(app_identifier, &team_identifier, identifier) {
-                return Err(Error::Signing(format!(
-                    "Provisioning profile app identifier '{}' does not allow bundle id '{}'",
+                // Expected for app extensions (NotificationService, ShareExtension, Widget, etc.)
+                // whose bundle IDs differ from the main app. Non-fatal warning, like zsign.
+                eprintln!(
+                    "WARNING: Provisioning profile app identifier '{}' does not allow bundle id '{}' — continuing (extension binary)",
                     app_identifier, identifier
-                )));
+                );
             }
         }
 

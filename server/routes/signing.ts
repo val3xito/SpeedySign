@@ -611,8 +611,10 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
         }
 
     } catch (error: any) {
-        const publicError = publicSigningError(error);
-        const errorMessage = publicError.message;
+        // En producción: mensaje genérico sin detalles internos
+        const errorMessage = IS_PRODUCTION
+            ? "Error al firmar la app. Verifica el certificado y el perfil de aprovisionamiento."
+            : (error.message || "Error al firmar la app");
 
         console.error(`  ❌ Error al firmar: ${error.message}`);
         if (jobId) { emitProgress(jobId, { phase: "error", message: errorMessage }); cleanupJob(jobId); }
@@ -620,7 +622,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
         cleanupAll(true);
 
         if (!res.headersSent) {
-            res.status(publicError.status).json({ error: errorMessage });
+            res.status(500).json({ error: errorMessage });
         }
     } finally {
         responseSent = true;

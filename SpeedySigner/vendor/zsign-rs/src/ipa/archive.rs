@@ -243,7 +243,8 @@ pub fn create_ipa(
                 file_options = file_options.with_alignment(4096);
             }
 
-            zip.start_file(&archive_path, file_options).map_err(Error::Zip)?;
+            zip.start_file(&archive_path, file_options)
+                .map_err(Error::Zip)?;
 
             // Stream file directly without loading into memory
             let mut file = File::open(path)?;
