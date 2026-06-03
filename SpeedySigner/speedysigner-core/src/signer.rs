@@ -119,6 +119,14 @@ pub fn verify_ipa(
 fn sign_ipa_native(config: &SignConfig, input_path: &Path, p12_bytes: &[u8]) -> Result<(), String> {
     let credentials = SigningCredentials::from_p12(p12_bytes, &config.p12_password)
         .map_err(|err| format!("No se pudieron cargar las credenciales del .p12: {err}"))?;
+    let profile_bytes = fs::read(&config.provision_path)
+        .map_err(|_| "No se pudo leer el provisioning profile".to_string())?;
+    let provision = ProvisioningSummary::parse(&profile_bytes)?;
+    let certificate_der = credentials
+        .certificate
+        .encode_der()
+        .map_err(|_| "No se pudo serializar el certificado del .p12".to_string())?;
+    provision.verify_signing_certificate(&certificate_der)?;
 
     let mut signer = ZSign::new()
         .credentials(credentials)
@@ -473,6 +481,7 @@ fn verify_signed_ipa(
 struct ProvisioningSummary {
     team_id: String,
     application_identifier: String,
+    developer_certificates: Vec<Vec<u8>>,
 }
 
 impl ProvisioningSummary {
@@ -506,10 +515,31 @@ impl ProvisioningSummary {
                     .map(|(team, _)| team.to_string())
             })
             .ok_or_else(|| "no se pudo determinar el Team ID del perfil".to_string())?;
+        let developer_certificates = dict
+            .get("DeveloperCertificates")
+            .and_then(|v| v.as_array())
+            .map(|certs| {
+                certs
+                    .iter()
+                    .filter_map(|cert| cert.as_data().map(|data| data.to_vec()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let expiration_date = dict
+            .get("ExpirationDate")
+            .and_then(|value| value.as_date())
+            .map(SystemTime::from);
+
+        if let Some(expires_at) = expiration_date {
+            if SystemTime::now() >= expires_at {
+                return Err("el provisioning profile esta caducado".to_string());
+            }
+        }
 
         Ok(Self {
             team_id,
             application_identifier,
+            developer_certificates,
         })
     }
 
@@ -517,11 +547,28 @@ impl ProvisioningSummary {
         if entitlement_allows_bundle_id(&self.application_identifier, &self.team_id, bundle_id) {
             Ok(())
         } else {
-            eprintln!(
-                "WARNING: el perfil '{}' no permite el bundle id '{}'",
+            Err(format!(
+                "el perfil '{}' no permite el bundle id '{}'",
                 self.application_identifier, bundle_id
+            ))
+        }
+    }
+
+    fn verify_signing_certificate(&self, certificate_der: &[u8]) -> Result<(), String> {
+        if self.developer_certificates.is_empty() {
+            return Err(
+                "el provisioning profile no contiene DeveloperCertificates".to_string(),
             );
+        }
+
+        if self
+            .developer_certificates
+            .iter()
+            .any(|profile_cert| profile_cert == certificate_der)
+        {
             Ok(())
+        } else {
+            Err("el certificado del .p12 no esta autorizado por el provisioning profile".to_string())
         }
     }
 }

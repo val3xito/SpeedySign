@@ -593,10 +593,10 @@ impl<'a> IpaSigner<'a> {
 
         if let Some(ref app_identifier) = app_identifier {
             if !entitlement_allows_identifier(app_identifier, &team_identifier, identifier) {
-                eprintln!(
-                    "WARNING: Provisioning profile app identifier '{}' does not allow bundle id '{}'",
+                return Err(Error::Signing(format!(
+                    "Provisioning profile app identifier '{}' does not allow bundle id '{}'",
                     app_identifier, identifier
-                );
+                )));
             }
         }
 

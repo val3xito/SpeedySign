@@ -303,7 +303,8 @@ export async function executeSign(
         throw new Error('No se encontró ningún motor de firma (zsign/arksign/speedysigner) en el servidor.');
     }
 
-    // Manual: speedysigner (con fallback a zsign, luego arksign)
+    // Manual: speedysigner. Si se selecciona este motor, el resultado debe
+    // venir de SpeedySigner o fallar con el error real.
     if (signerPref === 'speedysigner') {
         if (!ENABLE_SPEEDYSIGNER_EXPERIMENTAL) {
             await logSigningAttempt(userId, ip, appName, bundleId || '', 'speedysigner', 'manual', false, 'SpeedySigner experimental desactivado');
@@ -315,24 +316,12 @@ export async function executeSign(
             await logSigningAttempt(userId, ip, appName, bundleId || '', 'speedysigner', 'manual', ok, errors[0]);
             if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'speedysigner' }; }
         }
-        if (zsignAvailable) {
-            console.log('  ⚠️  speedysigner no disponible/falló → fallback a zsign...');
-            const ok = await tryZsign();
-            await logSigningAttempt(userId, ip, appName, bundleId || '', 'zsign', 'fallback', ok, errors.join(' | '));
-            if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'zsign' }; }
-        }
-        if (arksignAvailable) {
-            console.log('  ⚠️  zsign no disponible/falló → fallback a arksign...');
-            const ok = await tryArksign();
-            await logSigningAttempt(userId, ip, appName, bundleId || '', 'arksign', 'fallback', ok, errors.join(' | '));
-            if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'arksign' }; }
-        }
         cleanupLegacyP12();
         console.error(`  [SpeedySign] Error interno de firma con speedysigner: ${errors.join(' | ')}`);
         throw new Error(IS_PRODUCTION ? 'Error al firmar con speedysigner' : errors.join(' | '));
     }
 
-    // Manual: zsign (con fallback a arksign, luego speedysigner)
+    // Manual: zsign (con fallback a arksign)
     if (signerPref === 'zsign') {
         if (zsignAvailable) {
             const ok = await tryZsign();
@@ -345,18 +334,12 @@ export async function executeSign(
             await logSigningAttempt(userId, ip, appName, bundleId || '', 'arksign', 'fallback', ok, errors.join(' | '));
             if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'arksign' }; }
         }
-        if (speedysignerAvailable) {
-            console.log('  ⚠️  arksign no disponible/falló → fallback a speedysigner...');
-            const ok = await trySpeedysigner();
-            await logSigningAttempt(userId, ip, appName, bundleId || '', 'speedysigner', 'fallback', ok, errors.join(' | '));
-            if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'speedysigner' }; }
-        }
         cleanupLegacyP12();
         console.error(`  [SpeedySign] Error interno de firma: ${errors.join(' | ')}`);
         throw new Error(IS_PRODUCTION ? 'Error al firmar con zsign' : errors.join(' | '));
     }
 
-    // Manual: arksign (con fallback a zsign, luego speedysigner)
+    // Manual: arksign (con fallback a zsign)
     if (signerPref === 'arksign') {
         if (arksignAvailable) {
             const ok = await tryArksign();
@@ -369,19 +352,13 @@ export async function executeSign(
             await logSigningAttempt(userId, ip, appName, bundleId || '', 'zsign', 'fallback', ok, errors.join(' | '));
             if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'zsign' }; }
         }
-        if (speedysignerAvailable) {
-            console.log('  ⚠️  zsign no disponible/falló → fallback a speedysigner...');
-            const ok = await trySpeedysigner();
-            await logSigningAttempt(userId, ip, appName, bundleId || '', 'speedysigner', 'fallback', ok, errors.join(' | '));
-            if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'speedysigner' }; }
-        }
         cleanupLegacyP12();
         console.error(`  [SpeedySign] Error interno de firma: ${errors.join(' | ')}`);
         throw new Error(IS_PRODUCTION ? 'Error al firmar con arksign' : errors.join(' | '));
     }
 
-    // Auto: zsign primero. SpeedySigner queda como opcion manual hasta validar
-    // compatibilidad y rendimiento con IPAs reales.
+    // Auto: zsign primero. SpeedySigner queda solo como opcion manual hasta
+    // validar compatibilidad y rendimiento con IPAs reales.
     let finalSigner = 'zsign';
     let success = false;
 
@@ -393,12 +370,6 @@ export async function executeSign(
         console.log('  ⚠️  zsign falló → fallback a arksign...');
         finalSigner = 'arksign';
         success = await tryArksign();
-    }
-
-    if (!success && speedysignerAvailable) {
-        console.log('  ⚠️  arksign falló → fallback a speedysigner...');
-        finalSigner = 'speedysigner';
-        success = await trySpeedysigner();
     }
 
     await logSigningAttempt(userId, ip, appName, bundleId || '', finalSigner, 'auto', success, errors.join(' | '));
