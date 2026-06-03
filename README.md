@@ -69,7 +69,7 @@ graph TD
 ### Backend (Signing Server)
 * **Runtime:** Node.js (TypeScript) + Express
 * **Seguridad:** Helmet (con políticas COEP credentialless y CSP configuradas para Supabase y PWA)
-* **Herramientas nativas:** zsign, arksign, OpenSSL
+* **Herramientas nativas:** zsign (C++), arksign, zsign-rs (Rust), OpenSSL
 * **Base de datos:** Supabase SDK (para auditoría opcional de firmas)
 
 ---
@@ -116,6 +116,15 @@ Si te gusta SpeedySign y quieres ayudar a mantener los servidores de firma activ
 [![Apoyar en Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/val3xito)
 
 ¡Cualquier apoyo es sumamente bienvenido y ayuda directamente a costear el servidor de firmas!
+
+---
+
+## 💖 Créditos y Agradecimientos
+
+Este proyecto utiliza y se beneficia del excelente trabajo de la comunidad de código abierto. Queremos dar un reconocimiento especial a:
+* **[jveko](https://github.com/jveko)** por su magnífica implementación de **[zsign-rs](https://github.com/jveko/zsign-rs)**, el motor de firma nativo en Rust de alto rendimiento que utilizamos por defecto en este proyecto.
+* **[zhlynn](https://github.com/zhlynn)** por el desarrollo original de **[zsign](https://github.com/zhlynn/zsign)**, la herramienta en C++ pionera para firma de iOS que sirve de base para el ecosistema.
+* **[nabzclan-reborn](https://github.com/nabzclan-reborn)** por **[ArkSigning](https://github.com/nabzclan-reborn/ArkSigning)**, una excelente y rápida alternativa de firma de IPAs que tenemos integrada como motor adicional.
 
 ---
 

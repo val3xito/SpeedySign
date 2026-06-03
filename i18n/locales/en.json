@@ -145,7 +145,7 @@
     "signerAuto": "Auto (recommended)",
     "signerZsign": "zsign",
     "signerArksign": "ArkSign",
-    "signerSpeedysigner": "SpeedySigner",
+    "signerZsignRs": "zsign-rs (Rust)",
     "signerLabel": "⚙️ Signer: {{mode}}",
     "signingProgress": "Signing Progress",
     "completed": "Completed",

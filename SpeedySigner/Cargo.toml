@@ -1,6 +1,0 @@
-[workspace]
-members = [
-    "speedysigner-core",
-    "speedysigner-cli",
-]
-resolver = "2"

@@ -28,12 +28,12 @@ const SERVER_ROOT  = (IS_PRODUCTION || __dirname.includes('dist'))
 const BIN_DIR      = path.join(SERVER_ROOT, 'bin');
 const ZSIGN_PATH   = path.join(BIN_DIR, process.platform === 'win32' ? 'zsign.exe'   : 'zsign');
 const ARKSIGN_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'arksign.exe' : 'arksign');
-const SPEEDYSIGNER_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'speedysigner.exe' : 'speedysigner');
-const ENABLE_SPEEDYSIGNER_EXPERIMENTAL = process.env.ENABLE_SPEEDYSIGNER_EXPERIMENTAL !== 'false';
+const ZSIGN_RS_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'zsign-rs.exe' : 'zsign-rs');
+const ENABLE_ZSIGN_RS = process.env.ENABLE_ZSIGN_RS !== 'false';
 const REQUIRE_SIGNING_VERIFICATION = process.env.DISABLE_SIGNING_VERIFICATION !== 'true';
 const SENSITIVE_ARG_FLAGS = new Set(['-k', '-p', '-m', '-o', '-e', '-l', '-w']);
 
-export type SignerType = 'auto' | 'zsign' | 'arksign' | 'speedysigner';
+export type SignerType = 'auto' | 'zsign' | 'arksign' | 'zsign-rs';
 
 export interface SignOptions {
     inputPath:          string;
@@ -210,18 +210,7 @@ function runTool(toolPath: string, args: string[], toolName: string, signal?: Ab
     });
 }
 
-async function verifySignedOutput(opts: SignOptions, signal?: AbortSignal): Promise<void> {
-    if (!REQUIRE_SIGNING_VERIFICATION) return;
-
-    const verifierArgs = [
-        '--verify',
-        '-m', opts.provisionPath,
-        ...(opts.bundleId ? ['-b', opts.bundleId] : []),
-        opts.outputPath,
-    ];
-
-    await runTool(SPEEDYSIGNER_PATH, verifierArgs, 'speedysigner-verify', signal);
-}
+// zsign-rs does not have a verify subcommand, so verification helper is removed.
 
 /**
  * Construye los argumentos CLI para zsign / arksign.
@@ -251,6 +240,25 @@ function buildArgs(opts: SignOptions): string[] {
     return args;
 }
 
+function buildZsignRsArgs(opts: SignOptions): string[] {
+    const args: string[] = [
+        '-p', opts.p12Path,
+        '-m', opts.provisionPath,
+        '-o', opts.outputPath,
+    ];
+    if (opts.p12Pass) {
+        args.push('--password', opts.p12Pass);
+    }
+    if (opts.bundleId) {
+        args.push('-b', opts.bundleId);
+    }
+    if (opts.compressionLevel != null && opts.compressionLevel >= 0 && opts.compressionLevel <= 9) {
+        args.push('-z', String(opts.compressionLevel));
+    }
+    args.push(opts.inputPath);
+    return args;
+}
+
 // ── Orquestador principal ─────────────────────────────────────────────────────
 export async function executeSign(
     options: SignOptions,
@@ -260,15 +268,14 @@ export async function executeSign(
     const { appName, bundleId, signerPref, userId = 'unknown' } = options;
     const ip = ipAddress || 'unknown';
 
-    const speedysignerArgs = buildArgs(options);
+    const zsignRsArgs = buildZsignRsArgs(options);
     let resolvedP12: string | null = null;
     let fallbackArgs: string[] | null = null;
     const errors: string[] = [];
 
     const getFallbackArgs = async (): Promise<string[]> => {
         if (!fallbackArgs) {
-            // zsign/arksign necesitan a veces P12 legacy. SpeedySigner no pasa por
-            // esta conversion para evitar el coste de OpenSSL en el camino rapido.
+            // zsign/arksign necesitan a veces P12 legacy.
             resolvedP12 = await convertP12ToLegacy(options.p12Path, options.p12Pass || '');
             const resolvedOptions = resolvedP12 !== options.p12Path
                 ? { ...options, p12Path: resolvedP12 }
@@ -291,34 +298,44 @@ export async function executeSign(
     if (options.customName)         console.log(`  📝 Nombre: ${options.customName}`);
     if (options.customVersion)      console.log(`  🏷️  Versión: ${options.customVersion}`);
 
-    const tryZsign        = async () => { try { await runTool(ZSIGN_PATH,        await getFallbackArgs(), 'zsign',        signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; console.warn(`  [SpeedySign] Fallo en zsign: ${e.message}`); errors.push(e.message); return false; } };
-    const tryArksign      = async () => { try { await runTool(ARKSIGN_PATH,      await getFallbackArgs(), 'arksign',      signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; console.warn(`  [SpeedySign] Fallo en arksign: ${e.message}`); errors.push(e.message); return false; } };
-    const trySpeedysigner = async () => { try { await runTool(SPEEDYSIGNER_PATH, speedysignerArgs,       'speedysigner', signal); await verifySignedOutput(options, signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; console.warn(`  [SpeedySign] Fallo en speedysigner: ${e.message}`); errors.push(e.message); return false; } };
+    const tryZsign   = async () => { try { await runTool(ZSIGN_PATH,   await getFallbackArgs(), 'zsign',   signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; console.warn(`  [SpeedySign] Fallo en zsign: ${e.message}`); errors.push(e.message); return false; } };
+    const tryArksign = async () => { try { await runTool(ARKSIGN_PATH, await getFallbackArgs(), 'arksign', signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; console.warn(`  [SpeedySign] Fallo en arksign: ${e.message}`); errors.push(e.message); return false; } };
+    const tryZsignRs = async () => { try { await runTool(ZSIGN_RS_PATH, zsignRsArgs,             'zsign-rs', signal); return true; } catch (e: any) { if (e.message === 'Cancelled') throw e; console.warn(`  [SpeedySign] Fallo en zsign-rs: ${e.message}`); errors.push(e.message); return false; } };
 
-    const zsignAvailable        = fs.existsSync(ZSIGN_PATH);
-    const arksignAvailable      = fs.existsSync(ARKSIGN_PATH);
-    const speedysignerAvailable = ENABLE_SPEEDYSIGNER_EXPERIMENTAL && fs.existsSync(SPEEDYSIGNER_PATH);
+    const zsignAvailable   = fs.existsSync(ZSIGN_PATH);
+    const arksignAvailable = fs.existsSync(ARKSIGN_PATH);
+    const zsignRsAvailable = ENABLE_ZSIGN_RS && fs.existsSync(ZSIGN_RS_PATH);
 
-    if (!zsignAvailable && !arksignAvailable && !speedysignerAvailable) {
-        throw new Error('No se encontró ningún motor de firma (zsign/arksign/speedysigner) en el servidor.');
+    if (!zsignAvailable && !arksignAvailable && !zsignRsAvailable) {
+        throw new Error('No se encontró ningún motor de firma (zsign/arksign/zsign-rs) en el servidor.');
     }
 
-    // Manual: speedysigner. Si se selecciona este motor, el resultado debe
-    // venir de SpeedySigner o fallar con el error real.
-    if (signerPref === 'speedysigner') {
-        if (!ENABLE_SPEEDYSIGNER_EXPERIMENTAL) {
-            await logSigningAttempt(userId, ip, appName, bundleId || '', 'speedysigner', 'manual', false, 'SpeedySigner experimental desactivado');
+    // Manual: zsign-rs.
+    if (signerPref === 'zsign-rs') {
+        if (
+            options.customName ||
+            options.customVersion ||
+            (options.entitlementsPath && fs.existsSync(options.entitlementsPath)) ||
+            (options.dylibPaths && options.dylibPaths.length > 0) ||
+            (options.weakDylibPaths && options.weakDylibPaths.length > 0)
+        ) {
             cleanupLegacyP12();
-            throw new Error('SpeedySigner está desactivado temporalmente: la firma generada no supera la verificación de integridad de iOS. Usa zsign mientras se corrige.');
+            throw new Error("zsign-rs (Rust) no soporta inyección de dylibs, cambio de nombre/versión o entitlements personalizados en su CLI. Por favor usa zsign (C++) o arksign para estas funciones.");
         }
-        if (speedysignerAvailable) {
-            const ok = await trySpeedysigner();
-            await logSigningAttempt(userId, ip, appName, bundleId || '', 'speedysigner', 'manual', ok, errors[0]);
-            if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'speedysigner' }; }
+
+        if (!ENABLE_ZSIGN_RS) {
+            await logSigningAttempt(userId, ip, appName, bundleId || '', 'zsign-rs', 'manual', false, 'zsign-rs desactivado');
+            cleanupLegacyP12();
+            throw new Error('zsign-rs está desactivado temporalmente.');
+        }
+        if (zsignRsAvailable) {
+            const ok = await tryZsignRs();
+            await logSigningAttempt(userId, ip, appName, bundleId || '', 'zsign-rs', 'manual', ok, errors[0]);
+            if (ok) { cleanupLegacyP12(); return { success: true, outputPath: options.outputPath, signerUsed: 'zsign-rs' }; }
         }
         cleanupLegacyP12();
-        console.error(`  [SpeedySign] Error interno de firma con speedysigner: ${errors.join(' | ')}`);
-        throw new Error(IS_PRODUCTION ? 'Error al firmar con speedysigner' : errors.join(' | '));
+        console.error(`  [SpeedySign] Error interno de firma con zsign-rs: ${errors.join(' | ')}`);
+        throw new Error(IS_PRODUCTION ? 'Error al firmar con zsign-rs' : errors.join(' | '));
     }
 
     // Manual: zsign (con fallback a arksign)
@@ -357,12 +374,17 @@ export async function executeSign(
         throw new Error(IS_PRODUCTION ? 'Error al firmar con arksign' : errors.join(' | '));
     }
 
-    // Auto: zsign primero. SpeedySigner queda solo como opcion manual hasta
-    // validar compatibilidad y rendimiento con IPAs reales.
-    let finalSigner = 'zsign';
+    // Auto: zsign-rs primero, con fallbacks a zsign y arksign.
+    let finalSigner = 'zsign-rs';
     let success = false;
 
-    if (zsignAvailable) {
+    if (zsignRsAvailable) {
+        success = await tryZsignRs();
+    }
+
+    if (!success && zsignAvailable) {
+        console.log('  ⚠️  zsign-rs no disponible/falló → fallback a zsign...');
+        finalSigner = 'zsign';
         success = await tryZsign();
     }
 

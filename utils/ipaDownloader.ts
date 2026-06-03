@@ -257,7 +257,7 @@ export async function signIPAWithBackend(
     cert: Certificate,
     bundleId?: string,
     version?: string,
-    signer: "auto" | "zsign" | "arksign" | "speedysigner" = "auto",
+    signer: "auto" | "zsign" | "arksign" | "zsign-rs" = "auto",
     customOptions?: IpaSignCustomOptions,
     onProgress?: (event: SigningProgressEvent) => void,
     onJobReady?: (jobId: string) => void,

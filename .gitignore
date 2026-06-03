@@ -41,4 +41,3 @@ credentials.json
 server/signed/
 server/temp/
 *.log
-server/bin/speedysigner.exe
