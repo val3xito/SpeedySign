@@ -83,6 +83,47 @@ const storage = multer.diskStorage({
 const MAX_IPA_SIZE_MB = parseInt(process.env.MAX_IPA_SIZE_MB || "500", 10);
 const MAX_IPA_BYTES = MAX_IPA_SIZE_MB * 1024 * 1024;
 
+function publicSigningError(error: any): { status: number; message: string } {
+    const raw = String(error?.message || "");
+    const bundleMatch = raw.match(/bundle id '([^']+)'/i);
+    const bundleSuffix = bundleMatch ? ` "${bundleMatch[1]}"` : "";
+
+    if (raw.includes("does not allow bundle id") || raw.includes("no permite el bundle id")) {
+        return {
+            status: 400,
+            message: `El provisioning profile no permite el Bundle ID${bundleSuffix}. Usa un perfil wildcard/compatible o cambia el Bundle ID personalizado al App ID permitido por el perfil.`,
+        };
+    }
+
+    if (raw.includes("no esta autorizado por el provisioning profile")) {
+        return {
+            status: 400,
+            message: "El certificado .p12 no esta autorizado por el provisioning profile seleccionado.",
+        };
+    }
+
+    if (raw.includes("provisioning profile esta caducado")) {
+        return {
+            status: 400,
+            message: "El provisioning profile esta caducado. Importa un perfil vigente.",
+        };
+    }
+
+    if (raw.includes("DeveloperCertificates")) {
+        return {
+            status: 400,
+            message: "El provisioning profile no contiene certificados de desarrollador validos.",
+        };
+    }
+
+    return {
+        status: 500,
+        message: IS_PRODUCTION
+            ? "Error al firmar la app. Verifica el certificado y el perfil de aprovisionamiento."
+            : (raw || "Error al firmar la app"),
+    };
+}
+
 const upload = multer({
     storage,
     limits: { fileSize: MAX_IPA_BYTES, files: 15 },
@@ -570,10 +611,8 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
         }
 
     } catch (error: any) {
-        // En producción: mensaje genérico sin detalles internos
-        const errorMessage = IS_PRODUCTION
-            ? "Error al firmar la app. Verifica el certificado y el perfil de aprovisionamiento."
-            : (error.message || "Error al firmar la app");
+        const publicError = publicSigningError(error);
+        const errorMessage = publicError.message;
 
         console.error(`  ❌ Error al firmar: ${error.message}`);
         if (jobId) { emitProgress(jobId, { phase: "error", message: errorMessage }); cleanupJob(jobId); }
@@ -581,7 +620,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
         cleanupAll(true);
 
         if (!res.headersSent) {
-            res.status(500).json({ error: errorMessage });
+            res.status(publicError.status).json({ error: errorMessage });
         }
     } finally {
         responseSent = true;
