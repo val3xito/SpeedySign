@@ -1,5 +1,5 @@
 # SpeedySign - Full Stack
-# Compila zsign + ArkSigning + construye frontend Expo + servidor Node.js
+# Compila zsign-rs + construye frontend Expo + servidor Node.js
 
 # Compilar zsign-rs en Rust (jveko/zsign-rs)
 FROM rust:1-bookworm AS rust-builder
@@ -38,7 +38,9 @@ RUN cp web/manifest.json dist/manifest.json
 # ── Imagen final ──
 FROM node:20-slim
 
-# Instalar dependencias runtime (necesario para zsign y arksigning, y ClamAV)
+# Instalar dependencias runtime
+# gosu: para bajar privilegios de root a 'node' de forma segura en el entrypoint
+# clamav + clamav-daemon: para el daemon clamd de escaneo antivirus
 RUN apt-get update && apt-get install -y \
     libssl3 \
     libminizip1 \
@@ -46,8 +48,12 @@ RUN apt-get update && apt-get install -y \
     zlib1g \
     clamav \
     clamav-daemon \
-    && freshclam || true \
-    && rm -rf /var/lib/apt/lists/*
+    gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && freshclam --quiet || true
+
+# Añadir el usuario 'node' al grupo 'clamav' para que pueda usar el socket de clamd
+RUN usermod -aG clamav node
 
 WORKDIR /app
 
@@ -76,12 +82,16 @@ RUN chmod +x /app/bin/zsign-rs
 # Crear directorios necesarios y ajustar permisos para el usuario 'node'
 RUN mkdir -p signed temp && chown -R node:node signed temp
 
+# Copiar el entrypoint que arranca clamd y luego el servidor Node (como usuario 'node' via gosu)
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Configurar y exponer puerto
 ENV NODE_ENV=production
 ENV PORT=3001
 EXPOSE 3001
 
-# Cambiar al usuario no privilegiado 'node' para mitigar exploits/RCE
-USER node
-
-CMD ["node", "dist/index.js"]
+# NOTA: NO usamos USER node aquí porque el entrypoint necesita root
+# para iniciar clamd. gosu se encarga de bajar a 'node' antes de
+# ejecutar el servidor.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
