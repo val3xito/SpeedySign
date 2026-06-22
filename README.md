@@ -24,7 +24,7 @@ graph TD
     A[Dispositivo iOS] -->|1. Sube certificado .p12 y .mobileprovision| B(Supabase Secure Storage)
     A -->|2. Selecciona o sube IPA | C{Servidor Express}
     C -->|3. Descarga IPA & Certificados de forma segura| C
-    C -->|4. Aplica modificaciones: Inyección Dylib, BundleID, Compartir Archivos| D[zsign / arksign]
+    C -->|4. Aplica modificaciones: Inyección Dylib, BundleID, Compartir Archivos| D[zsign-rs (Rust)]
     D -->|5. Genera IPA firmado criptográficamente| C
     C -->|6. Genera Manifiesto OTA| C
     C -->|7. Instalación instantánea via itms-services| A
@@ -35,11 +35,12 @@ graph TD
 ## ✨ Características Principales
 
 * **📦 Gestión de Fuentes (Repositorios)**: Explora catálogos de aplicaciones agregados dinámicamente mediante JSON o importa listados de URLs en lote.
-* **🔐 Criptografía y Firma Real**: Orquestación automática de **zsign** y **arksign** en caliente. Permite la conversión de certificados `.p12` modernos a formatos heredados mediante OpenSSL en el servidor.
+* **🔐 Criptografía y Firma de Alto Rendimiento**: Orquestación automática de **zsign-rs** (Rust) en caliente. Permite firmar archivos IPA nativamente sin requerir conversiones obsoletas o dependencias pesadas de compilación en C++.
 * **🛡️ Seguridad y Privacidad Blindada**:
   * Almacenamiento seguro temporal de certificados en memoria.
   * Uso de **`secureDelete`** (sobrescritura física de bits en disco antes de eliminar archivos sensibles para evitar recuperación de datos).
-  * Limpieza programada automática de IPAs firmados y temporales huérfanos cada 3 minutos.
+  * Limpieza programada de IPAs firmados y temporales cada 3 minutos, y eliminación de registros de progreso inactivos en memoria cada 5 minutos.
+  * **Escaneo Antivirus con ClamAV**: Análisis de seguridad en tiempo real para todos los archivos IPA y dylibs inyectados en el servidor antes de firmar, con bypass inteligente para entornos locales de desarrollo.
   * Autenticación anónima por dispositivo con Supabase Auth.
 * **⚡ Rendimiento y Web Premium (PWA)**:
   * Compresión Gzip activada en Express.
@@ -69,7 +70,7 @@ graph TD
 ### Backend (Signing Server)
 * **Runtime:** Node.js (TypeScript) + Express
 * **Seguridad:** Helmet (con políticas COEP credentialless y CSP configuradas para Supabase y PWA)
-* **Herramientas nativas:** zsign (C++), arksign, zsign-rs (Rust), OpenSSL
+* **Herramientas nativas:** zsign-rs (Rust), ClamAV (opcional para antivirus)
 * **Base de datos:** Supabase SDK (para auditoría opcional de firmas)
 
 ---
@@ -79,7 +80,7 @@ graph TD
 ### Requisitos Previos
 * Node.js v20 o superior
 * Docker (opcional para despliegue en un clic)
-* OpenSSL instalado en el sistema (requerido para la conversión de certificados)
+* ClamAV (opcional en entorno local de desarrollo para la función de antivirus)
 
 ### 1. Clonar el Repositorio
 ```bash
@@ -103,7 +104,7 @@ npm run dev
 ```
 
 ### 4. Despliegue en un Clic (Docker / Coolify / Render)
-El proyecto incluye un `Dockerfile` optimizado en la raíz. El proceso de construcción de Docker compilará automáticamente **zsign** y **arksign** desde sus fuentes, construirá la aplicación PWA y configurará el servidor de producción.
+El proyecto incluye un `Dockerfile` optimizado en la raíz. El proceso de construcción de Docker compilará automáticamente **zsign-rs** desde sus fuentes, preparará la base de datos de ClamAV, construirá la aplicación PWA y configurará el servidor de producción.
 
 Solo necesitas conectar tu repositorio a Render o a tu VPS mediante Coolify.
 
@@ -122,9 +123,8 @@ Si te gusta SpeedySign y quieres ayudar a mantener los servidores de firma activ
 ## 💖 Créditos y Agradecimientos
 
 Este proyecto utiliza y se beneficia del excelente trabajo de la comunidad de código abierto. Queremos dar un reconocimiento especial a:
-* **[jveko](https://github.com/jveko)** por su magnífica implementación de **[zsign-rs](https://github.com/jveko/zsign-rs)**, el motor de firma nativo en Rust de alto rendimiento que utilizamos por defecto en este proyecto.
-* **[zhlynn](https://github.com/zhlynn)** por el desarrollo original de **[zsign](https://github.com/zhlynn/zsign)**, la herramienta en C++ pionera para firma de iOS que sirve de base para el ecosistema.
-* **[nabzclan-reborn](https://github.com/nabzclan-reborn)** por **[ArkSigning](https://github.com/nabzclan-reborn/ArkSigning)**, una excelente y rápida alternativa de firma de IPAs que tenemos integrada como motor adicional.
+* **[jveko](https://github.com/jveko)** por su magnífica implementación de **[zsign-rs](https://github.com/jveko/zsign-rs)**, el motor de firma nativo en Rust de alto rendimiento que utilizamos de manera exclusiva en este proyecto.
+* **[zhlynn](https://github.com/zhlynn)** (zsign C++) y **[nabzclan-reborn](https://github.com/nabzclan-reborn)** (ArkSigning) por su trabajo pionero y desarrollo de las herramientas originales que sirvieron como referencia conceptual.
 
 ---
 
