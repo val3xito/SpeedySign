@@ -321,6 +321,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
         customName, customVersion, customBundleId,
         sha256Only, compressionLevel,
         enableFileSharing, removeDeviceRestrictions, liquidGlass,
+        enableAntivirus,
     } = req.body;
 
     const files         = (req as any).files || {};
@@ -564,29 +565,32 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
             }
 
             // Escaneo antivirus de IPA y dylibs inyectados
-            if (jobId) {
-                emitProgress(jobId, { phase: "download", message: "Escaneando archivos en busca de virus..." });
-            }
-
-            const ipaClean = await scanFileForVirus(tempIpaPath);
-            if (!ipaClean) {
-                cleanupAll();
-                addStrike();
+            const antivirusEnabled = enableAntivirus !== "false";
+            if (antivirusEnabled) {
                 if (jobId) {
-                    emitProgress(jobId, { phase: "error", message: "Instalación abortada: Se detectó una amenaza/virus en el archivo IPA." });
+                    emitProgress(jobId, { phase: "download", message: "Escaneando archivos en busca de virus..." });
                 }
-                return;
-            }
 
-            for (const dylib of savedDylibPaths) {
-                const dylibClean = await scanFileForVirus(dylib);
-                if (!dylibClean) {
+                const ipaClean = await scanFileForVirus(tempIpaPath);
+                if (!ipaClean) {
                     cleanupAll();
                     addStrike();
                     if (jobId) {
-                        emitProgress(jobId, { phase: "error", message: `Instalación abortada: Se detectó una amenaza/virus en el dylib inyectado "${path.basename(dylib)}".` });
+                        emitProgress(jobId, { phase: "error", message: "Instalación abortada: Se detectó una amenaza/virus en el archivo IPA." });
                     }
                     return;
+                }
+
+                for (const dylib of savedDylibPaths) {
+                    const dylibClean = await scanFileForVirus(dylib);
+                    if (!dylibClean) {
+                        cleanupAll();
+                        addStrike();
+                        if (jobId) {
+                            emitProgress(jobId, { phase: "error", message: `Instalación abortada: Se detectó una amenaza/virus en el dylib inyectado "${path.basename(dylib)}".` });
+                        }
+                        return;
+                    }
                 }
             }
 

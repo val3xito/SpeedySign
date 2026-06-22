@@ -229,6 +229,7 @@ export interface IpaSignCustomOptions {
     compressionLevel?:         number;
     /** Objetos File web para inyección de dylibs */
     dylibFiles?:               File[];
+    enableAntivirus?:          boolean;
 }
 
 /**
@@ -302,6 +303,7 @@ export async function signIPAWithBackend(
             if (co.liquidGlass)              formData.append("liquidGlass",              "true");
             if (co.sha256Only)               formData.append("sha256Only",               "true");
             if (co.compressionLevel != null) formData.append("compressionLevel",         String(co.compressionLevel));
+            if (co.enableAntivirus !== undefined) formData.append("enableAntivirus",   co.enableAntivirus ? "true" : "false");
             for (const dylib of (co.dylibFiles || [])) formData.append("dylibFiles", dylib, dylib.name);
         }
 

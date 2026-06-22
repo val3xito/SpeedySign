@@ -98,6 +98,7 @@ export default function AppDetailScreen() {
     const [signerPreference, setSignerPreference] = useState<"auto" | "zsign-rs">("zsign-rs");
     // Opciones de personalización pre-firma
     const [ipaOptions, setIpaOptions] = useState<IpaCustomOptions>(defaultIpaOptions());
+    const [enableAntivirus, setEnableAntivirus] = useState(true);
 
     React.useEffect(() => {
         setSignerPreference("zsign-rs");
@@ -227,6 +228,7 @@ export default function AppDetailScreen() {
                         sha256Only:               ipaOptions.sha256Only,
                         compressionLevel:         ipaOptions.compressionLevel,
                         dylibFiles:               ipaOptions.dylibFiles as any,
+                        enableAntivirus:          enableAntivirus,
                     },
                     (event: SigningProgressEvent) => {
                         if (event.phase === "download") {
@@ -807,6 +809,78 @@ export default function AppDetailScreen() {
                                 shortVersion: params.version || "",
                             }}
                         />
+                    </Animated.View>
+                )}
+
+                {/* Botón de Antivirus */}
+                {!isSigning && !signingComplete && (
+                    <Animated.View entering={FadeInDown.delay(450).duration(400)} style={{ marginBottom: 20 }}>
+                        <Pressable
+                            onPress={() => setEnableAntivirus(!enableAntivirus)}
+                            style={({ pressed }) => ({
+                                backgroundColor: colors.card,
+                                borderRadius: 16,
+                                borderWidth: 1,
+                                borderColor: enableAntivirus ? `${colors.accent}45` : colors.cardBorder,
+                                padding: 16,
+                                opacity: pressed ? 0.95 : 1,
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: 14,
+                            })}
+                        >
+                            <View style={{
+                                width: 42,
+                                height: 42,
+                                borderRadius: 12,
+                                backgroundColor: enableAntivirus ? `${colors.accent}18` : "#FF4D4D18",
+                                justifyContent: "center",
+                                alignItems: "center",
+                            }}>
+                                <Ionicons
+                                    name={enableAntivirus ? "shield-checkmark" : "shield-alert"}
+                                    size={22}
+                                    color={enableAntivirus ? colors.accent : "#FF4D4D"}
+                                />
+                            </View>
+
+                            <View style={{ flex: 1, gap: 2 }}>
+                                <Text style={{
+                                    color: colors.text,
+                                    fontSize: 15,
+                                    fontWeight: "600",
+                                }}>
+                                    {enableAntivirus ? "Escaneo Antivirus Activo" : "Escaneo Antivirus Desactivado"}
+                                </Text>
+                                <Text style={{
+                                    color: colors.textSecondary,
+                                    fontSize: 12,
+                                    lineHeight: 16,
+                                }}>
+                                    {enableAntivirus
+                                        ? "El servidor analizará la app contra virus y malware antes de la firma. Más seguro pero toma unos segundos adicionales."
+                                        : "El escaneo se omitirá para una firma e instalación directa e inmediata. Menos seguro."}
+                                </Text>
+                            </View>
+
+                            {/* Custom Switch Toggle */}
+                            <View style={{
+                                width: 46,
+                                height: 26,
+                                borderRadius: 13,
+                                backgroundColor: enableAntivirus ? colors.accent : `${colors.textSecondary}30`,
+                                padding: 3,
+                                justifyContent: "center",
+                                alignItems: enableAntivirus ? "flex-end" : "flex-start",
+                            }}>
+                                <View style={{
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: 10,
+                                    backgroundColor: "#FFFFFF",
+                                }} />
+                            </View>
+                        </Pressable>
                     </Animated.View>
                 )}
 
