@@ -257,7 +257,7 @@ export async function signIPAWithBackend(
     cert: Certificate,
     bundleId?: string,
     version?: string,
-    signer: "auto" | "zsign" | "arksign" | "zsign-rs" = "auto",
+    signer: "auto" | "zsign-rs" = "auto",
     customOptions?: IpaSignCustomOptions,
     onProgress?: (event: SigningProgressEvent) => void,
     onJobReady?: (jobId: string) => void,
@@ -280,56 +280,6 @@ export async function signIPAWithBackend(
 
     // Notificar el jobId al llamador antes de empezar (para poder cancelar)
     if (onJobReady) onJobReady(jobId);
-
-    // Polling secuencial cada 1000 ms para obtener el progreso del servidor sin saturar conexiones
-    if (isWeb && onProgress) {
-        const statusUrl = `${serverUrl}/api/sign/status/${jobId}`;
-        const runPoll = async () => {
-            while (pollingActive) {
-                try {
-                    if (signal?.aborted) {
-                        pollingActive = false;
-                        break;
-                    }
-                    const res = await fetch(statusUrl, {
-                        headers: { "Bypass-Tunnel-Reminder": "true" },
-                        signal,
-                    });
-                    if (!pollingActive) break;
-                    if (res.ok) {
-                        const textBody = await res.text();
-                        let data: SigningProgressEvent;
-                        try {
-                            data = JSON.parse(textBody);
-                        } catch {
-                            await new Promise((r) => setTimeout(r, 500));
-                            continue;
-                        }
-                        if (data && data.phase) {
-                            onProgress(data);
-                            if (data.phase === "done" || data.phase === "error") {
-                                pollingActive = false;
-                                break;
-                            }
-                        }
-                    }
-                } catch {
-                    // Servidor aún no ha registrado el job o error temporal de red
-                }
-                if (!pollingActive) break;
-                await new Promise((r) => {
-                    const timeout = setTimeout(r, 1000);
-                    if (signal) {
-                        signal.addEventListener("abort", () => {
-                            clearTimeout(timeout);
-                            r(null);
-                        });
-                    }
-                });
-            }
-        };
-        runPoll();
-    }
 
     console.log(`[SpeedySign] Firmando en: ${serverUrl}/api/sign`);
 
@@ -408,6 +358,7 @@ export async function signIPAWithBackend(
     };
 
     let lastError: Error = new Error("Error desconocido");
+    let targetJobId = jobId;
 
     try {
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -439,25 +390,90 @@ export async function signIPAWithBackend(
                     continue;
                 }
 
-                return {
-                    signedUrl:   data.signedUrl,
-                    manifestUrl: data.manifestUrl,
-                    installUrl:  data.installUrl,
-                    fileName:    data.fileName,
-                    size:        data.size,
-                };
+                if (data.jobId) {
+                    targetJobId = data.jobId;
+                }
+                break; // Exito al iniciar el job, salir del bucle de reintentos
             } catch (e: any) {
                 if (e.name === "AbortError" || (e.message && e.message.includes("aborted"))) {
                     throw e; // Do not retry, propagate abort immediately
                 }
                 if (e.message && !e.message.includes("fetch")) throw e;
                 lastError = new Error(`No se pudo conectar con ${serverUrl} — ${e.message}`);
+                if (attempt === MAX_RETRIES) throw lastError;
             }
         }
 
-        throw lastError;
+        // Ahora esperamos a que el polling loop termine en segundo plano
+        console.log(`[SpeedySign] Firma iniciada con jobId: ${targetJobId}. Esperando completado...`);
+        return await new Promise<SigningResult>((resolve, reject) => {
+            const statusUrl = `${serverUrl}/api/sign/status/${targetJobId}`;
+            const runPoll = async () => {
+                while (pollingActive) {
+                    try {
+                        if (signal?.aborted) {
+                            pollingActive = false;
+                            reject(new DOMException("The user aborted a request.", "AbortError"));
+                            break;
+                        }
+                        const res = await fetch(statusUrl, {
+                            headers: { "Bypass-Tunnel-Reminder": "true", ...authHeaders },
+                            signal,
+                        });
+                        if (!pollingActive) break;
+                        if (res.ok) {
+                            const textBody = await res.ok ? await res.text() : "";
+                            let statusData: any;
+                            try {
+                                statusData = JSON.parse(textBody);
+                            } catch {
+                                await new Promise((r) => setTimeout(r, 500));
+                                continue;
+                            }
+                            if (statusData && statusData.phase) {
+                                if (onProgress) {
+                                    onProgress(statusData);
+                                }
+                                if (statusData.phase === "done") {
+                                    pollingActive = false;
+                                    resolve({
+                                        signedUrl:   statusData.signedUrl,
+                                        manifestUrl: statusData.manifestUrl,
+                                        installUrl:  statusData.installUrl,
+                                        fileName:    statusData.fileName,
+                                        size:        statusData.size,
+                                    });
+                                    break;
+                                } else if (statusData.phase === "error") {
+                                    pollingActive = false;
+                                    reject(new Error(statusData.message || "Error al firmar la app en el servidor"));
+                                    break;
+                                }
+                            }
+                        }
+                    } catch (e: any) {
+                        if (e.name === "AbortError" || (e.message && e.message.includes("aborted"))) {
+                            pollingActive = false;
+                            reject(e);
+                            break;
+                        }
+                        console.warn("[SpeedySign] Error temporal de red en polling de progreso:", e.message);
+                    }
+                    if (!pollingActive) break;
+                    await new Promise((r) => {
+                        const timeout = setTimeout(r, 1000);
+                        if (signal) {
+                            signal.addEventListener("abort", () => {
+                                clearTimeout(timeout);
+                                r(null);
+                            });
+                        }
+                    });
+                }
+            };
+            runPoll();
+        });
     } finally {
-        // Detener polling siempre, haya éxito, error o reintento
         pollingActive = false;
     }
 }

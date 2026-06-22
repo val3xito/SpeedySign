@@ -251,18 +251,14 @@ export default function LibraryScreen() {
     const [refreshing, setRefreshing] = React.useState(false);
     const [resigningId, setResigningId] = useState<string | null>(null);
     const [resigningAll, setResigningAll] = useState(false);
-    const [signerPreference, setSignerPreference] = useState<"auto" | "zsign" | "arksign" | "zsign-rs">("auto");
+    const [signerPreference, setSignerPreference] = useState<"auto" | "zsign-rs">("zsign-rs");
 
     // Recargar apps instaladas cada vez que el usuario navega a esta pantalla.
     // Necesario porque app-detail escribe en AsyncStorage desde otra instancia del hook.
     useFocusEffect(
         useCallback(() => {
             reload();
-            AsyncStorage.getItem('signer_pref').then((val) => {
-                if (val === "auto" || val === "zsign" || val === "arksign" || val === "zsign-rs") {
-                    setSignerPreference(val as any);
-                }
-            });
+            setSignerPreference("zsign-rs");
         }, [reload])
     );
 

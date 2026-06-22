@@ -31,6 +31,7 @@ import { isValidAppName, isValidDownloadUrl, isValidBundleId, isValidIPAFile, is
 import { requireAuth, AuthRequest } from "../middleware/auth";
 import { secureDelete } from "../utils/secureDelete";
 import { signQueue } from "../utils/queue";
+import { scanFileForVirus } from "../utils/virusScan";
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
@@ -42,12 +43,6 @@ const SIGNED_DIR = path.resolve(SERVER_ROOT, "signed");
 const TEMP_DIR   = path.resolve(SERVER_ROOT, "temp");
 const BIN_DIR    = path.resolve(SERVER_ROOT, "bin");
 
-const ZSIGN_PATH   = process.platform === "win32"
-    ? path.join(BIN_DIR, "zsign.exe")
-    : path.join(BIN_DIR, "zsign");
-const ARKSIGN_PATH = process.platform === "win32"
-    ? path.join(BIN_DIR, "arksign.exe")
-    : path.join(BIN_DIR, "arksign");
 const ZSIGN_RS_PATH = process.platform === "win32"
     ? path.join(BIN_DIR, "zsign-rs.exe")
     : path.join(BIN_DIR, "zsign-rs");
@@ -172,6 +167,14 @@ interface SigningProgress {
     downloaded?: number;
     total?: number;
     message?: string;
+    userId?: string;
+    createdAt?: number;
+    // Resultados
+    signedUrl?: string;
+    manifestUrl?: string;
+    installUrl?: string;
+    fileName?: string;
+    size?: number;
 }
 
 const progressStore   = new Map<string, SigningProgress>();
@@ -179,11 +182,16 @@ const progressClients = new Map<string, Set<any>>();
 /** AbortController por jobId — permite cancelar descarga y firma en servidor */
 const jobControllers  = new Map<string, AbortController>();
 
-function emitProgress(jobId: string, event: SigningProgress): void {
-    progressStore.set(jobId, event);
+function emitProgress(jobId: string, event: Partial<SigningProgress> & Pick<SigningProgress, "phase">): void {
+    const existing = progressStore.get(jobId) || { createdAt: Date.now() };
+    const merged = { ...existing, ...event } as SigningProgress;
+    if (!merged.createdAt) {
+        merged.createdAt = Date.now();
+    }
+    progressStore.set(jobId, merged);
     const clients = progressClients.get(jobId);
     if (!clients) return;
-    const data = `data: ${JSON.stringify(event)}\n\n`;
+    const data = `data: ${JSON.stringify(merged)}\n\n`;
     for (const client of clients) {
         try { client.write(data); } catch { /* cliente desconectado */ }
     }
@@ -196,6 +204,28 @@ function cleanupJob(jobId: string): void {
         jobControllers.delete(jobId);
     }, 5000);
 }
+
+// Limpieza automática de trabajos inactivos/huérfanos en memoria cada 5 minutos
+const STALE_JOB_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutos
+const memoryCleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [jobId, progress] of progressStore.entries()) {
+        const age = now - (progress.createdAt || now);
+        if (age > STALE_JOB_THRESHOLD_MS) {
+            const controller = jobControllers.get(jobId);
+            if (controller) {
+                try { controller.abort(); } catch {}
+                jobControllers.delete(jobId);
+            }
+            progressStore.delete(jobId);
+            progressClients.delete(jobId);
+            console.log(`[SpeedySign] Limpieza en memoria: eliminado jobId huérfano ${jobId} (edad: ${Math.round(age / 1000)}s)`);
+        }
+    }
+}, 5 * 60 * 1000);
+memoryCleanupInterval.unref();
+
+export { memoryCleanupInterval };
 
 // ── GET /sign/progress/:jobId  (SSE) ─────────────────────────────────────────
 // Sin auth: el jobId es un UUID aleatorio generado por el cliente (122 bits de
@@ -254,10 +284,15 @@ signingRouter.delete("/sign/cancel/:jobId", (req: Request, res: Response) => {
 
 // ── GET /sign/status/:jobId  (polling) ───────────────────────────────────────
 
-signingRouter.get("/sign/status/:jobId", (req: Request, res: Response) => {
+signingRouter.get("/sign/status/:jobId", requireAuth, (req: AuthRequest, res: Response) => {
     const jobId = req.params.jobId as string;
     const progress = progressStore.get(jobId);
     if (!progress) return res.status(404).json({ phase: null });
+    
+    // Validar propiedad del trabajo
+    if (progress.userId && progress.userId !== req.userId) {
+        return res.status(403).json({ error: "No autorizado" });
+    }
     res.json(progress);
 });
 
@@ -266,7 +301,7 @@ signingRouter.get("/sign/status/:jobId", (req: Request, res: Response) => {
 // No expone rutas de binarios, configuración interna ni conteo de archivos.
 
 signingRouter.get("/status", (_req: Request, res: Response) => {
-    const signerReady = fs.existsSync(ZSIGN_PATH) || fs.existsSync(ARKSIGN_PATH) || fs.existsSync(ZSIGN_RS_PATH);
+    const signerReady = fs.existsSync(ZSIGN_RS_PATH);
     res.json({ status: "ok", ready: signerReady });
 });
 
@@ -328,7 +363,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
         return res.status(400).json({ error: "customBundleId inválido" });
     }
     // Validar campos opcionales de nombre y versión para evitar que lleguen strings
-    // arbitrarios a zsign/arksign. execFile es seguro contra inyección de shell,
+    // arbitrarios a zsign-rs. execFile es seguro contra inyección de shell,
     // pero strings muy largos o con caracteres raros pueden crashear la herramienta.
     if (customName && !isValidAppName(customName)) {
         return res.status(400).json({ error: "customName inválido (solo alfanuméricos, máx 100 chars)" });
@@ -376,7 +411,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
     const provisionPathToUse = provisionFile ? provisionFile.path : PROVISION_PATH;
     const p12PasswordToUse   = p12File ? (p12Password || "") : P12_PASSWORD;
 
-    if (!fs.existsSync(ZSIGN_PATH) && !fs.existsSync(ARKSIGN_PATH) && !fs.existsSync(ZSIGN_RS_PATH)) {
+    if (!fs.existsSync(ZSIGN_RS_PATH)) {
         return res.status(503).json({ error: "Servicio de firma no disponible" });
     }
     if (!fs.existsSync(p12PathToUse)) {
@@ -435,19 +470,19 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
         return res.status(429).json({ error: "Ya tienes una instalación en proceso. Por favor, espera a que termine." });
     }
 
-    // Cooldown de 3 minutos tras una firma completada correctamente.
+    // Cooldown de 1 minuto tras una firma completada correctamente.
     // No se marca aquí: un fallo de descarga/firma no debe bloquear el siguiente intento.
     if (IS_PRODUCTION) {
         const lastUpload = customUploadCooldowns.get(userId) || 0;
         const now = Date.now();
-        if (now - lastUpload < 3 * 60 * 1000) {
+        if (now - lastUpload < 1 * 60 * 1000) {
             [ipaFile, ...dylibFiles].forEach((uf: any) => {
                 if (uf?.path && fs.existsSync(uf.path)) try { fs.unlinkSync(uf.path); } catch { }
             });
             sensitiveFiles.forEach(f => {
                 if (f && fs.existsSync(f)) secureDelete(f);
             });
-            return res.status(429).json({ error: "Solo puedes realizar una firma de aplicación cada 3 minutos. Por favor, espera." });
+            return res.status(429).json({ error: "Solo puedes realizar una firma de aplicación cada 1 minuto. Por favor, espera." });
         }
     }
 
@@ -464,171 +499,197 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
     const hasPlistMods = enableFileSharing === "true" || removeDeviceRestrictions === "true" || liquidGlass === "true"
         || !!customBundleId || !!customName || !!customVersion;
 
-    console.log(`\n📦 Nueva solicitud de firma: ${appName} (user: ${userId.slice(0, 8)}...)`);
+    console.log(`\n📦 Nueva solicitud de firma (asíncrona): ${appName} (user: ${userId.slice(0, 8)}...)`);
 
     const abortController = new AbortController();
     if (jobId) jobControllers.set(jobId, abortController);
     const { signal } = abortController;
 
-    let responseSent = false;
-    const onConnClose = () => {
-        if (!responseSent) {
-            console.log(`  🔌 Conexión cerrada por el cliente (jobId: ${jobId || 'desconocido'}). Abortando firma...`);
-            abortController.abort();
-        }
-    };
-    req.on("close", onConnClose);
+    const baseUrl = getBaseUrlFromRequest(req);
 
-    try {
-        if (!ipaFile) {
-            console.log(`  ⬇️  Descargando IPA...`);
-            await downloadFile(
-                ipaUrl,
-                tempIpaPath,
-                jobId ? (downloaded, total) => emitProgress(jobId, { phase: "download", downloaded, total }) : undefined,
-                signal,
-                jobId ? () => emitProgress(jobId, { phase: "download", message: "Esperando en cola de descarga..." }) : undefined
-            );
-        }
+    // Responder de inmediato aceptando la solicitud
+    res.status(202).json({
+        success: true,
+        message: "Firma iniciada en segundo plano",
+        jobId,
+    });
 
-        // Verificar que el IPA es un ZIP válido (magic bytes PK\x03\x04)
-        if (!isValidIPAFile(tempIpaPath)) {
-            if (!ipaFile && fs.existsSync(tempIpaPath)) fs.unlinkSync(tempIpaPath);
-            cleanupAll();
-            addStrike();
-            if (!res.headersSent) {
-                return res.status(400).json({ error: "El archivo no es un IPA válido" });
+    req.on("close", () => {
+        console.log(`  🔌 Conexión HTTP cerrada por el cliente (jobId: ${jobId || 'desconocido'}). La firma continúa en segundo plano.`);
+    });
+
+    // Proceso asíncrono en segundo plano
+    (async () => {
+        try {
+            if (jobId) {
+                emitProgress(jobId, { phase: "download", userId });
             }
-            return;
-        }
 
-        // Protección contra Zip Bombs
-        if (!isSafeZip(tempIpaPath)) {
-            cleanupAll();
-            addStrike();
-            if (!res.headersSent) {
-                return res.status(400).json({ error: "El archivo IPA supera el límite de seguridad de descompresión (posible Zip Bomb)." });
+            if (!ipaFile) {
+                console.log(`  ⬇️  Descargando IPA...`);
+                await downloadFile(
+                    ipaUrl,
+                    tempIpaPath,
+                    jobId ? (downloaded, total) => emitProgress(jobId, { phase: "download", downloaded, total }) : undefined,
+                    signal,
+                    jobId ? () => emitProgress(jobId, { phase: "download", message: "Esperando en cola de descarga..." }) : undefined
+                );
             }
-            return;
-        }
 
-        // Validación de archivos .dylib (Mach-O)
-        for (const dylib of savedDylibPaths) {
-            if (!isValidDylibFile(dylib)) {
+            // Verificar que el IPA es un ZIP válido (magic bytes PK\x03\x04)
+            if (!isValidIPAFile(tempIpaPath)) {
+                if (!ipaFile && fs.existsSync(tempIpaPath)) fs.unlinkSync(tempIpaPath);
                 cleanupAll();
                 addStrike();
-                if (!res.headersSent) {
-                    return res.status(400).json({ error: "Uno de los archivos .dylib es inválido o no tiene formato Mach-O." });
+                if (jobId) emitProgress(jobId, { phase: "error", message: "El archivo no es un IPA válido" });
+                return;
+            }
+
+            // Protección contra Zip Bombs
+            if (!isSafeZip(tempIpaPath)) {
+                cleanupAll();
+                addStrike();
+                if (jobId) emitProgress(jobId, { phase: "error", message: "El archivo IPA supera el límite de seguridad de descompresión." });
+                return;
+            }
+
+            // Validación de archivos .dylib (Mach-O)
+            for (const dylib of savedDylibPaths) {
+                if (!isValidDylibFile(dylib)) {
+                    cleanupAll();
+                    addStrike();
+                    if (jobId) emitProgress(jobId, { phase: "error", message: "Uno de los archivos .dylib es inválido o no tiene formato Mach-O." });
+                    return;
+                }
+            }
+
+            // Escaneo antivirus de IPA y dylibs inyectados
+            if (jobId) {
+                emitProgress(jobId, { phase: "download", message: "Escaneando archivos en busca de virus..." });
+            }
+
+            const ipaClean = await scanFileForVirus(tempIpaPath);
+            if (!ipaClean) {
+                cleanupAll();
+                addStrike();
+                if (jobId) {
+                    emitProgress(jobId, { phase: "error", message: "Instalación abortada: Se detectó una amenaza/virus en el archivo IPA." });
                 }
                 return;
             }
-        }
 
-        const stats = fs.statSync(tempIpaPath);
-        console.log(`  ✅ Archivo listo: ${(stats.size / (1024 * 1024)).toFixed(1)} MB`);
-
-        const waitingCount = signQueue.getWaitingCount();
-        if (waitingCount > 0) {
-            console.log(`  ⏳ Solicitud en cola (Posición: ${waitingCount})...`);
-            if (jobId) emitProgress(jobId, { phase: "sign", message: `Esperando en cola (Posición: ${waitingCount})...` });
-        }
-
-        await signQueue.enqueue(async () => {
-            if (signal.aborted) {
-                throw new Error("Cancelled");
+            for (const dylib of savedDylibPaths) {
+                const dylibClean = await scanFileForVirus(dylib);
+                if (!dylibClean) {
+                    cleanupAll();
+                    addStrike();
+                    if (jobId) {
+                        emitProgress(jobId, { phase: "error", message: `Instalación abortada: Se detectó una amenaza/virus en el dylib inyectado "${path.basename(dylib)}".` });
+                    }
+                    return;
+                }
             }
-            if (jobId) emitProgress(jobId, { phase: "sign", message: "Firmando aplicación..." });
 
-            let ipaToSign = tempIpaPath;
-            if (hasPlistMods) {
-                console.log(`  ✏️  Aplicando modificaciones al IPA...`);
-                await modifyIPA(tempIpaPath, modifiedIpaPath, {
-                    bundleId:                 customBundleId || undefined,
-                    displayName:              customName     || undefined,
-                    shortVersion:             customVersion  || undefined,
-                    enableFileSharing:        enableFileSharing === "true",
-                    removeDeviceRestrictions: removeDeviceRestrictions === "true",
-                    liquidGlass:              liquidGlass === "true",
+            const stats = fs.statSync(tempIpaPath);
+            console.log(`  ✅ Archivo listo y escaneado: ${(stats.size / (1024 * 1024)).toFixed(1)} MB`);
+
+            const waitingCount = signQueue.getWaitingCount();
+            if (waitingCount > 0) {
+                console.log(`  ⏳ Solicitud en cola (Posición: ${waitingCount})...`);
+                if (jobId) emitProgress(jobId, { phase: "sign", message: `Esperando en cola (Posición: ${waitingCount})...` });
+            }
+
+            await signQueue.enqueue(async () => {
+                if (signal.aborted) {
+                    throw new Error("Cancelled");
+                }
+                if (jobId) emitProgress(jobId, { phase: "sign", message: "Firmando aplicación..." });
+
+                let ipaToSign = tempIpaPath;
+                if (hasPlistMods) {
+                    console.log(`  ✏️  Aplicando modificaciones al IPA...`);
+                    await modifyIPA(tempIpaPath, modifiedIpaPath, {
+                        bundleId:                 customBundleId || undefined,
+                        displayName:              customName     || undefined,
+                        shortVersion:             customVersion  || undefined,
+                        enableFileSharing:        enableFileSharing === "true",
+                        removeDeviceRestrictions: removeDeviceRestrictions === "true",
+                        liquidGlass:              liquidGlass === "true",
+                    });
+                    ipaToSign = modifiedIpaPath;
+                }
+
+                await executeSign({
+                    inputPath:        ipaToSign,
+                    outputPath:       signedIpaPath,
+                    bundleId:         customBundleId || bundleId,
+                    p12Path:          p12PathToUse,
+                    p12Pass:          p12PasswordToUse,
+                    provisionPath:    provisionPathToUse,
+                    appName,
+                    signerPref:       signer || "auto",
+                    customName:       customName    || undefined,
+                    customVersion:    customVersion || undefined,
+                    sha256Only:       sha256Only    === "true",
+                    compressionLevel: compressionLevel != null ? parseInt(compressionLevel, 10) : undefined,
+                    dylibPaths:       savedDylibPaths,
+                    userId,
+                }, signal, clientIp);
+            }, signal);
+
+            if (!fs.existsSync(signedIpaPath)) throw new Error("El archivo firmado no se generó");
+
+            const signedStats = fs.statSync(signedIpaPath);
+            const signedUrl   = `${baseUrl}/download/${signedFileName}`;
+            const manifestUrl = `${baseUrl}/manifest/${signedFileName}?bundleId=${encodeURIComponent(bundleId || "com.speedysign.app")}&appName=${encodeURIComponent(customName || appName)}&version=${encodeURIComponent(customVersion || version || "1.0")}`;
+            const installUrl  = `itms-services://?action=download-manifest&url=${encodeURIComponent(manifestUrl)}`;
+
+            console.log(`  ✅ ¡Proceso completado! ${signedFileName}`);
+
+            // Incrementar el uso diario al tener éxito
+            userDaily.count++;
+            dailySignatures.set(userId, userDaily);
+            if (IS_PRODUCTION) {
+                customUploadCooldowns.set(userId, Date.now());
+            }
+
+            if (jobId) {
+                emitProgress(jobId, {
+                    phase: "done",
+                    signedUrl,
+                    manifestUrl,
+                    installUrl,
+                    fileName:   signedFileName,
+                    size:       signedStats.size,
                 });
-                ipaToSign = modifiedIpaPath;
+                cleanupJob(jobId);
             }
 
-            await executeSign({
-                inputPath:        ipaToSign,
-                outputPath:       signedIpaPath,
-                bundleId:         customBundleId || bundleId,
-                p12Path:          p12PathToUse,
-                p12Pass:          p12PasswordToUse,
-                provisionPath:    provisionPathToUse,
-                appName,
-                signerPref:       signer || "auto",
-                customName:       customName    || undefined,
-                customVersion:    customVersion || undefined,
-                sha256Only:       sha256Only    === "true",
-                compressionLevel: compressionLevel != null ? parseInt(compressionLevel, 10) : undefined,
-                dylibPaths:       savedDylibPaths,
-                userId,
-            }, signal, req.ip || "unknown");
-        }, signal);
-
-        if (!fs.existsSync(signedIpaPath)) throw new Error("El archivo firmado no se generó");
-
-        const signedStats = fs.statSync(signedIpaPath);
-        const baseUrl     = getBaseUrlFromRequest(req);
-        const signedUrl   = `${baseUrl}/download/${signedFileName}`;
-        const manifestUrl = `${baseUrl}/manifest/${signedFileName}?bundleId=${encodeURIComponent(bundleId || "com.speedysign.app")}&appName=${encodeURIComponent(customName || appName)}&version=${encodeURIComponent(customVersion || version || "1.0")}`;
-        const installUrl  = `itms-services://?action=download-manifest&url=${encodeURIComponent(manifestUrl)}`;
-
-        console.log(`  ✅ ¡Proceso completado! ${signedFileName}`);
-
-        // Incrementar el uso diario al tener éxito
-        userDaily.count++;
-        dailySignatures.set(userId, userDaily);
-        if (IS_PRODUCTION) {
-            customUploadCooldowns.set(userId, Date.now());
-        }
-
-        if (jobId) { emitProgress(jobId, { phase: "done" }); cleanupJob(jobId); }
-
-        // Limpiar archivos temporales (IPA, dylibs)
-        [tempIpaPath, modifiedIpaPath, ...savedDylibPaths].forEach(f => {
-            if (f && fs.existsSync(f)) try { fs.unlinkSync(f); } catch { }
-        });
-        // Limpiar archivos sensibles con eliminación segura (sobreescribir antes de borrar)
-        sensitiveFiles.forEach(f => {
-            if (f && fs.existsSync(f)) secureDelete(f);
-        });
-
-        if (!res.headersSent) {
-            res.json({
-                success:    true,
-                signedUrl,
-                manifestUrl,
-                installUrl,
-                fileName:   signedFileName,
-                size:       signedStats.size,
+            // Limpiar archivos temporales (IPA, dylibs)
+            [tempIpaPath, modifiedIpaPath, ...savedDylibPaths].forEach(f => {
+                if (f && fs.existsSync(f)) try { fs.unlinkSync(f); } catch { }
             });
+            // Limpiar archivos sensibles con eliminación segura
+            sensitiveFiles.forEach(f => {
+                if (f && fs.existsSync(f)) secureDelete(f);
+            });
+
+        } catch (error: any) {
+            const errorMessage = IS_PRODUCTION
+                ? "Error al firmar la app. Verifica el certificado y el perfil de aprovisionamiento."
+                : (error.message || "Error al firmar la app");
+
+            console.error(`  ❌ Error al firmar en segundo plano: ${error.message}`);
+            if (jobId) {
+                emitProgress(jobId, { phase: "error", message: errorMessage });
+                cleanupJob(jobId);
+            }
+
+            cleanupAll(true);
+        } finally {
+            activeUserSignings.delete(userId);
         }
-
-    } catch (error: any) {
-        // En producción: mensaje genérico sin detalles internos
-        const errorMessage = IS_PRODUCTION
-            ? "Error al firmar la app. Verifica el certificado y el perfil de aprovisionamiento."
-            : (error.message || "Error al firmar la app");
-
-        console.error(`  ❌ Error al firmar: ${error.message}`);
-        if (jobId) { emitProgress(jobId, { phase: "error", message: errorMessage }); cleanupJob(jobId); }
-
-        cleanupAll(true);
-
-        if (!res.headersSent) {
-            res.status(500).json({ error: errorMessage });
-        }
-    } finally {
-        responseSent = true;
-        req.off("close", onConnClose);
-        activeUserSignings.delete(userId);
-    }
+    })();
 });
 
 // ── POST /check-ocsp ──────────────────────────────────────────────────────────

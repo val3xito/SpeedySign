@@ -7,40 +7,11 @@ WORKDIR /usr/src/zsign-rs
 RUN git clone https://github.com/jveko/zsign-rs.git . \
     && cargo build --release -p zsign-cli
 
-FROM node:20-slim AS signer-builder
-
-# Instalar dependencias de compilación para zsign y ArkSigning
-RUN apt-get update && apt-get install -y \
-    git \
-    g++ \
-    make \
-    cmake \
-    pkg-config \
-    libssl-dev \
-    libminizip-dev \
-    zlib1g-dev \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Clonar y compilar zsign
-RUN git clone https://github.com/zhlynn/zsign.git /tmp/zsign \
-    && cd /tmp/zsign/build/linux \
-    && make
-
-# Clonar e instalar ArkSigning usando INSTALL.sh (sin sudo — Docker ya corre como root)
-RUN git clone https://github.com/nabzclan-reborn/ArkSigning.git /tmp/arksigning \
-    && cd /tmp/arksigning \
-    && chmod +x INSTALL.sh \
-    && sed -i 's/sudo //g' INSTALL.sh \
-    && (bash INSTALL.sh || (mkdir -p /tmp/arksigning/build && cd /tmp/arksigning/build && cmake .. && make)) \
-    ; mkdir -p /tmp/arksigning/build \
-    && (ls /tmp/arksigning/build/arksigning 2>/dev/null || printf '#!/bin/sh\necho "arksign not available"\nexit 1\n' > /tmp/arksigning/build/arksigning)
-
 # ── Build del frontend ──
 FROM node:20-slim AS frontend-builder
 
 # Truco para forzar que esta etapa espere a que los signers terminen (evita problemas de concurrencia de memoria)
-COPY --from=signer-builder /tmp/zsign/bin/zsign /tmp/zsign-dummy
+COPY --from=rust-builder /usr/src/zsign-rs/target/release/zsign-cli /tmp/zsign-dummy
 
 WORKDIR /frontend
 COPY package.json package-lock.json ./
@@ -67,12 +38,15 @@ RUN cp web/manifest.json dist/manifest.json
 # ── Imagen final ──
 FROM node:20-slim
 
-# Instalar dependencias runtime (necesario para zsign y arksigning)
+# Instalar dependencias runtime (necesario para zsign y arksigning, y ClamAV)
 RUN apt-get update && apt-get install -y \
     libssl3 \
     libminizip1 \
     openssl \
     zlib1g \
+    clamav \
+    clamav-daemon \
+    && freshclam || true \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -94,12 +68,10 @@ RUN npm prune --production
 # Copiar frontend compilado
 COPY --from=frontend-builder /frontend/dist /app/dist
 
-# Copiar zsign, arksigning y zsign-rs compilados
+# Copiar zsign-rs compilado
 RUN mkdir -p /app/bin
-COPY --from=signer-builder /tmp/zsign/bin/zsign /app/bin/zsign
-COPY --from=signer-builder /tmp/arksigning/build/arksigning /app/bin/arksign
 COPY --from=rust-builder /usr/src/zsign-rs/target/release/zsign-cli /app/bin/zsign-rs
-RUN chmod +x /app/bin/zsign /app/bin/arksign /app/bin/zsign-rs
+RUN chmod +x /app/bin/zsign-rs
 
 # Crear directorios necesarios y ajustar permisos para el usuario 'node'
 RUN mkdir -p signed temp && chown -R node:node signed temp
