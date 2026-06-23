@@ -427,6 +427,7 @@ export async function signIPAWithBackend(
         return await new Promise<SigningResult>((resolve, reject) => {
             const statusUrl = `${serverUrl}/api/sign/status/${targetJobId}`;
             const runPoll = async () => {
+                let consecutive404s = 0;
                 while (pollingActive) {
                     try {
                         if (signal?.aborted) {
@@ -440,7 +441,8 @@ export async function signIPAWithBackend(
                         });
                         if (!pollingActive) break;
                         if (res.ok) {
-                            const textBody = await res.ok ? await res.text() : "";
+                            consecutive404s = 0;
+                            const textBody = await res.text();
                             let statusData: any;
                             try {
                                 statusData = JSON.parse(textBody);
@@ -468,6 +470,15 @@ export async function signIPAWithBackend(
                                     break;
                                 }
                             }
+                        } else if (res.status === 404) {
+                            consecutive404s++;
+                            if (consecutive404s >= 10) {
+                                pollingActive = false;
+                                reject(new Error("El proceso de firma no se encontró o expiró en el servidor"));
+                                break;
+                            }
+                        } else {
+                            consecutive404s = 0;
                         }
                     } catch (e: any) {
                         if (e.name === "AbortError" || (e.message && e.message.includes("aborted"))) {

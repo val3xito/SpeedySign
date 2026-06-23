@@ -212,8 +212,12 @@ function emitProgress(jobId: string, event: Partial<SigningProgress> & Pick<Sign
 }
 
 function cleanupJob(jobId: string): void {
+    // Limpiamos los clientes y el controlador de abortos después de 5 segundos.
+    // Mantenemos el resultado en progressStore para que los clientes que se suspendieron
+    // en segundo plano puedan hacer polling del estado final al volver a abrir la app.
+    // El progressStore se eliminará automáticamente por el interval de limpieza general (memoryCleanupInterval)
+    // tras superar los 10 minutos de antigüedad (STALE_JOB_THRESHOLD_MS).
     setTimeout(() => {
-        progressStore.delete(jobId);
         progressClients.delete(jobId);
         jobControllers.delete(jobId);
     }, 5000);
@@ -517,7 +521,15 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
     console.log(`\n📦 Nueva solicitud de firma (asíncrona): ${appName} (user: ${userId.slice(0, 8)}...)`);
 
     const abortController = new AbortController();
-    if (jobId) jobControllers.set(jobId, abortController);
+    if (jobId) {
+        // Inicializar el estado de progreso para evitar race condition de 404 en el polling inicial
+        progressStore.set(jobId, {
+            phase: "download",
+            userId,
+            createdAt: Date.now()
+        });
+        jobControllers.set(jobId, abortController);
+    }
     const { signal } = abortController;
 
     const baseUrl = getBaseUrlFromRequest(req);
