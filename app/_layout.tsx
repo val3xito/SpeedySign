@@ -7,7 +7,7 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, View, Platform } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -81,7 +81,10 @@ export default function RootLayout() {
     );
 
     return (
-        <View style={{ flex: 1 }}>
+        <View
+            style={Platform.OS !== "web" ? { flex: 1 } : undefined}
+            className={Platform.OS === "web" ? "web-root-layout" : undefined}
+        >
             {/* Splash intro animado (web only) */}
             <WebSplash />
             <ThemeContext.Provider value={themeState}>

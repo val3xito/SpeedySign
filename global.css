@@ -84,3 +84,26 @@ input, textarea, select {
     position: fixed !important;
     bottom: calc(env(safe-area-inset-bottom, 0px) + 102px) !important;
 }
+
+@media (display-mode: standalone) {
+    .standalone-tabbar-root {
+        /* Si env(safe-area-inset-bottom) se resuelve como 0px en el arranque elástico, max() fuerza 34px */
+        bottom: calc(max(env(safe-area-inset-bottom, 34px), 34px) + 18px) !important;
+    }
+
+    .floating-signing-bubble-root {
+        bottom: calc(max(env(safe-area-inset-bottom, 34px), 34px) + 102px) !important;
+    }
+}
+
+/* Forzar que el layout raíz web coincida exactamente con la ventana de visualización dinámica (100dvh) */
+.web-root-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100dvh !important;
+    width: 100vw !important;
+    overflow: hidden !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+}

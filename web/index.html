@@ -51,7 +51,7 @@
       right: 0;
       bottom: 0;
       width: 100%;
-      height: 100%;
+      height: 100dvh;
       margin: 0;
       padding: 0;
       overflow: hidden;
@@ -62,10 +62,12 @@
 
     #root {
       display: flex;
-      height: 100%;
-      width: 100%;
-      flex: 1;
+      height: 100dvh;
+      width: 100vw;
       overflow: hidden;
+      position: fixed;
+      top: 0;
+      left: 0;
     }
   </style>
 
@@ -446,9 +448,9 @@
       }, 5500);
     })();
   </script>
-  <!-- ═══ iOS Standalone PWA — Interceptor de links ═══ -->
-  <!-- Evita que cualquier <a href> interno abra Safari cuando la app -->
-  <!-- está instalada en la pantalla de inicio (modo standalone). -->
+  <!-- ═══ iOS Standalone PWA — Interceptor de links e Inhabilitación de Rebote (Overscroll/Bounce) ═══ -->
+  <!-- Evita que cualquier <a href> interno abra Safari cuando la app está instalada, -->
+  <!-- y bloquea el desplazamiento elástico de la página web (rubber-banding) para actuar como app nativa. -->
   <script>
     (function () {
       // Solo actuar en modo standalone de iOS
@@ -480,6 +482,51 @@
           window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
         }
       }, true);
+
+      // Bloquear rebote elástico (rubber band) del viewport
+      var touchStartY = 0;
+      document.addEventListener('touchstart', function (e) {
+        if (e.touches.length === 1) {
+          touchStartY = e.touches[0].clientY;
+        }
+      }, { passive: true });
+
+      document.addEventListener('touchmove', function (e) {
+        if (e.touches.length !== 1) return;
+
+        var touchY = e.touches[0].clientY;
+        var deltaY = touchY - touchStartY;
+
+        var el = e.target;
+        var isScrollable = false;
+
+        // Subir por el árbol del DOM para buscar un elemento con scroll
+        while (el && el !== document.body && el !== document.documentElement) {
+          var style = window.getComputedStyle(el);
+          var overflowY = style.overflowY || style.overflow || '';
+          if (overflowY === 'auto' || overflowY === 'scroll') {
+            var scrollTop = el.scrollTop;
+            var scrollHeight = el.scrollHeight;
+            var clientHeight = el.clientHeight;
+
+            var canScrollUp = scrollTop > 0.5;
+            var canScrollDown = (scrollHeight - clientHeight - scrollTop) > 1.5;
+
+            // deltaY > 0: arrastre hacia abajo (intenta hacer scroll hacia arriba)
+            // deltaY < 0: arrastre hacia arriba (intenta hacer scroll hacia abajo)
+            if ((deltaY > 0 && canScrollUp) || (deltaY < 0 && canScrollDown)) {
+              isScrollable = true;
+              break;
+            }
+          }
+          el = el.parentNode;
+        }
+
+        // Si no está en un contenedor scrollable activo en esta dirección, bloquear el evento
+        if (!isScrollable) {
+          e.preventDefault();
+        }
+      }, { passive: false });
     })();
   </script>
 </body>
