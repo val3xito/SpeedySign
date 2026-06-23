@@ -187,21 +187,20 @@ const progressClients = new Map<string, Set<any>>();
 const jobControllers  = new Map<string, AbortController>();
 
 function emitProgress(jobId: string, event: Partial<SigningProgress> & Pick<SigningProgress, "phase">): void {
-    const existing = progressStore.get(jobId) || { createdAt: Date.now() };
+    const existing = progressStore.get(jobId);
     const now = Date.now();
 
     // Detectar cambio de fase para registrar cuándo empezó
-    const phaseChanged = existing.phase !== event.phase;
+    const phaseChanged = !existing || existing.phase !== event.phase;
     const phaseStartedAt = phaseChanged ? now : (existing.phaseStartedAt ?? now);
 
-    const merged = {
+    const merged: SigningProgress = {
+        createdAt: now,
         ...existing,
         ...event,
         phaseStartedAt,
-        elapsedMs: now - (existing.createdAt ?? now),
-    } as SigningProgress;
-
-    if (!merged.createdAt) merged.createdAt = now;
+        elapsedMs: now - (existing?.createdAt ?? now),
+    };
 
     progressStore.set(jobId, merged);
     const clients = progressClients.get(jobId);
