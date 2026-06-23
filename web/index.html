@@ -43,6 +43,10 @@
 
   <!-- Base styles -->
   <style id="expo-reset">
+    :root {
+      --app-viewport-height: 100dvh;
+    }
+
     html,
     body {
       position: fixed;
@@ -51,7 +55,7 @@
       right: 0;
       bottom: 0;
       width: 100%;
-      height: 100dvh;
+      height: var(--app-viewport-height, 100dvh);
       margin: 0;
       padding: 0;
       overflow: hidden;
@@ -62,7 +66,7 @@
 
     #root {
       display: flex;
-      height: 100dvh;
+      height: var(--app-viewport-height, 100dvh);
       width: 100vw;
       overflow: hidden;
       position: fixed;

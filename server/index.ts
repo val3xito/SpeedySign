@@ -255,6 +255,7 @@ app.get("/manifest.json", (_req, res) => {
 // index.html generado e inyectar los tags PWA en tiempo de servicio.
 
 const INDEX_HTML_PATH = path.join(DIST_DIR, "index.html");
+const VIEWPORT_META = `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, shrink-to-fit=no, viewport-fit=cover" />`;
 
 // Tags PWA y SEO / Social Tags (OpenGraph y Twitter) que Expo no incluye en su template
 const PWA_TAGS = `
@@ -303,6 +304,11 @@ function getIndexHtml(): string {
     if (cachedIndexHtml) return cachedIndexHtml;
     try {
         let html = fs.readFileSync(INDEX_HTML_PATH, "utf8");
+        if (/<meta\s+name=["']viewport["'][^>]*>/i.test(html)) {
+            html = html.replace(/<meta\s+name=["']viewport["'][^>]*>/i, VIEWPORT_META);
+        } else {
+            html = html.replace("</head>", `${VIEWPORT_META}\n</head>`);
+        }
         // Inyectar tags PWA justo antes de </head>
         html = html.replace("</head>", `${PWA_TAGS}\n</head>`);
         // Inyectar script standalone justo antes de </body>

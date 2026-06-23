@@ -33,6 +33,59 @@ export default function RootLayout() {
     const themeState = useThemeState();
     const router = useRouter();
 
+    useEffect(() => {
+        if (Platform.OS !== "web" || typeof window === "undefined" || typeof document === "undefined") {
+            return;
+        }
+
+        const root = document.documentElement;
+        const nav = window.navigator as Navigator & { standalone?: boolean };
+        const isIOS =
+            /iPad|iPhone|iPod/.test(nav.userAgent) ||
+            (nav.platform === "MacIntel" && nav.maxTouchPoints > 1);
+        const isStandalone =
+            nav.standalone === true ||
+            window.matchMedia?.("(display-mode: standalone)")?.matches === true;
+
+        root.classList.toggle("ios-standalone-pwa", isIOS && isStandalone);
+
+        const syncViewportHeight = () => {
+            const height = window.visualViewport?.height || window.innerHeight;
+            if (height > 0) {
+                root.style.setProperty("--app-viewport-height", `${Math.round(height)}px`);
+            }
+        };
+
+        const scheduleSync = () => {
+            window.requestAnimationFrame(syncViewportHeight);
+        };
+
+        scheduleSync();
+        const timers = [
+            window.setTimeout(scheduleSync, 250),
+            window.setTimeout(scheduleSync, 1000),
+        ];
+
+        window.addEventListener("resize", scheduleSync);
+        window.addEventListener("orientationchange", scheduleSync);
+        window.addEventListener("pageshow", scheduleSync);
+        window.addEventListener("focus", scheduleSync);
+        window.visualViewport?.addEventListener("resize", scheduleSync);
+        window.visualViewport?.addEventListener("scroll", scheduleSync);
+
+        return () => {
+            timers.forEach((timer) => window.clearTimeout(timer));
+            window.removeEventListener("resize", scheduleSync);
+            window.removeEventListener("orientationchange", scheduleSync);
+            window.removeEventListener("pageshow", scheduleSync);
+            window.removeEventListener("focus", scheduleSync);
+            window.visualViewport?.removeEventListener("resize", scheduleSync);
+            window.visualViewport?.removeEventListener("scroll", scheduleSync);
+            root.classList.remove("ios-standalone-pwa");
+            root.style.removeProperty("--app-viewport-height");
+        };
+    }, []);
+
     // Inicializar autenticación Supabase y registrar dispositivo
     useEffect(() => {
         (async () => {
