@@ -124,7 +124,9 @@ export function FloatingSigningBubble() {
             : "sync-outline";
 
     // Posición: justo encima del tab bar (BAR=56, BUBBLE_RISE=16, padding=12 + elevacion)
-    const bottomOffset = insets.bottom + 56 + 16 + 12 + TAB_BAR_BOTTOM_LIFT;
+    const bottomOffset = Platform.OS === "web"
+        ? "calc(env(safe-area-inset-bottom, 0px) + 102px)" as any
+        : insets.bottom + 56 + 16 + 12 + TAB_BAR_BOTTOM_LIFT;
 
     // La burbuja pill se oculta si el panel está abierto o si estamos en la pantalla de firma
     const showBubble = visible && !isOnDetailScreen && !modalVisible;
