@@ -35,6 +35,50 @@ import { useRouter, usePathname } from "expo-router";
 import { useTheme } from "../hooks/useTheme";
 import { useTranslation } from "react-i18next";
 
+/**
+ * Lee env(safe-area-inset-bottom) directamente del CSS, que en iOS PWA
+ * standalone siempre tiene el valor correcto, incluso cuando
+ * useSafeAreaInsets devuelve 0 en el primer render.
+ */
+function useSafeBottomInset(): number {
+    const rnInsets = useSafeAreaInsets();
+    const [cssInset, setCssInset] = useState<number>(0);
+
+    useEffect(() => {
+        if (Platform.OS !== "web") return;
+
+        function readCssInset() {
+            try {
+                // Crear un elemento temporal para leer la variable CSS computada
+                const el = document.createElement("div");
+                el.style.position = "fixed";
+                el.style.bottom = "env(safe-area-inset-bottom, 0px)";
+                el.style.height = "0px";
+                el.style.visibility = "hidden";
+                el.style.pointerEvents = "none";
+                document.body.appendChild(el);
+                const computed = window.getComputedStyle(el).bottom;
+                document.body.removeChild(el);
+                const parsed = parseFloat(computed);
+                if (!isNaN(parsed) && parsed > 0) {
+                    setCssInset(parsed);
+                }
+            } catch (_) {
+                // silencio — usamos el valor de RN como fallback
+            }
+        }
+
+        readCssInset();
+        // Re-leer en resize/orientación (puede cambiar en rotación)
+        window.addEventListener("resize", readCssInset);
+        return () => window.removeEventListener("resize", readCssInset);
+    }, []);
+
+    // Tomamos el máximo entre la variable CSS y el valor de RN para garantizar
+    // que nunca usamos un 0 incorrecto cuando uno de los dos sí tiene el valor real.
+    return Math.max(cssInset, rnInsets.bottom);
+}
+
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 /* ─── Dimensiones ─── */
@@ -141,11 +185,12 @@ function TabItem({ tabIndex, accentColor, inactiveColor, onPress, proximity }: T
  * ───────────────────────────────────────────── */
 export function StandaloneTabBar() {
     const { colors, isDark } = useTheme();
-    const insets   = useSafeAreaInsets();
     const router   = useRouter();
     const pathname = usePathname();
-    const tabBarBottomOffset =
-        (Platform.OS === "ios" ? insets.bottom : insets.bottom + 12) + BOTTOM_LIFT;
+    // useSafeBottomInset combina env(safe-area-inset-bottom) CSS + RN insets
+    // para evitar que el navbar quede cortado en iOS PWA modo standalone
+    const safeBottom = useSafeBottomInset();
+    const tabBarBottomOffset = safeBottom + BOTTOM_LIFT;
 
     /* Índice activo según ruta */
     const activeIndex = useMemo(() => {

@@ -10,6 +10,7 @@
  */
 export function sanitizeFilename(filename: string): string {
   return filename
+    .replace(/\.\.\/|\.\.\\/g, '')   // Eliminar path traversal primero
     .replace(/[^a-zA-Z0-9._-]/g, '_')
     .replace(/_{2,}/g, '_')
     .substring(0, 255); // Límite de longitud
@@ -22,6 +23,10 @@ export function sanitizeFilename(filename: string): string {
 export function sanitizeUrl(url: string): string {
   try {
     const parsed = new URL(url);
+    // Rechazar protocolos peligrosos (javascript:, data:, etc.)
+    if (!['http:', 'https:', 'blob:'].includes(parsed.protocol)) {
+      return '';
+    }
     // Remover fragmentos
     parsed.hash = '';
     return parsed.toString();

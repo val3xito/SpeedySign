@@ -61,6 +61,9 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
  * @param onProgress - Callback de progreso (opcional)
  * @returns Resultado con la ruta local del archivo (Blob) y su tamaño
  */
+/** AbortController activo para la descarga IPA en curso (null si no hay descarga) */
+let activeDownloadController: AbortController | null = null;
+
 export async function downloadIPA(
     downloadURL: string,
     appName: string,
@@ -75,22 +78,29 @@ export async function downloadIPA(
         throw new Error("URL de descarga no segura. Solo se permiten HTTPS, blob: y file:.");
     }
 
-    return downloadIPAWeb(downloadURL, appName, onProgress);
+    // Crear AbortController dedicado para esta descarga
+    activeDownloadController = new AbortController();
+    try {
+        return await downloadIPAWeb(downloadURL, appName, onProgress, activeDownloadController.signal);
+    } finally {
+        activeDownloadController = null;
+    }
 }
 
 /**
- * Descarga en web usando fetch + blob (fallback).
+ * Descarga en web usando fetch + blob.
  * Usa streaming con ReadableStream para reportar progreso real.
+ * @param signal AbortSignal para cancelar la descarga externamente.
  */
 async function downloadIPAWeb(
     downloadURL: string,
     appName: string,
-    onProgress?: (progress: DownloadProgress) => void
+    onProgress?: (progress: DownloadProgress) => void,
+    signal?: AbortSignal
 ): Promise<DownloadResult> {
-    webCancelFlag = false;
-
     const response = await fetch(downloadURL, {
         headers: { "User-Agent": "SpeedySign/1.0" },
+        signal,
     });
 
     if (!response.ok) {
@@ -108,7 +118,7 @@ async function downloadIPAWeb(
 
         // eslint-disable-next-line no-constant-condition
         while (true) {
-            if (webCancelFlag) {
+            if (signal?.aborted) {
                 reader.cancel();
                 throw new Error("cancelled");
             }
@@ -142,14 +152,15 @@ async function downloadIPAWeb(
     return { uri: url, size: blob.size };
 }
 
-/** Flag de cancelación para web */
-let webCancelFlag = false;
 
 /**
- * Cancela la descarga actual si hay una en curso.
+ * Cancela la descarga activa si hay una en curso.
  */
 export async function cancelDownload(): Promise<void> {
-    webCancelFlag = true;
+    if (activeDownloadController) {
+        activeDownloadController.abort();
+        activeDownloadController = null;
+    }
 }
 
 /**
@@ -207,7 +218,7 @@ export interface SigningResult {
     size: number;
 }
 
-/** Evento de progreso emitido por el backend vía SSE */
+/** Evento de progreso emitido por el backend vía SSE / polling */
 export interface SigningProgressEvent {
     phase: "download" | "sign" | "done" | "error";
     /** Bytes descargados hasta el momento */
@@ -215,7 +226,12 @@ export interface SigningProgressEvent {
     /** Tamaño total en bytes (0 si el servidor no envía Content-Length) */
     total?: number;
     message?: string;
+    /** Tiempo transcurrido desde el inicio del job en milisegundos */
+    elapsedMs?: number;
+    /** Timestamp de cuándo empezó la fase actual */
+    phaseStartedAt?: number;
 }
+
 
 /** Opciones de personalización pre-firma */
 export interface IpaSignCustomOptions {

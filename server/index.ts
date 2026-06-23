@@ -314,6 +314,26 @@ function getIndexHtml(): string {
     }
 }
 
+// ── Invalidar caché del index.html al cambiar en disco ─────────────────────────
+// Necesario en deploys zero-downtime donde el proceso Node no se reinicia:
+// si dist/index.html se actualiza sin reiniciar el servidor, el caché en
+// memoria quedará obsoleto y los usuarios recibirán el HTML viejo.
+try {
+    if (fs.existsSync(INDEX_HTML_PATH)) {
+        const watcher = fs.watch(INDEX_HTML_PATH, (event) => {
+            if (event === "change" || event === "rename") {
+                cachedIndexHtml = null;
+                console.log("[SpeedySign] index.html actualizado en disco — caché invalidado.");
+            }
+        });
+        // No bloquear el proceso al salir
+        watcher.unref();
+    }
+} catch (e) {
+    // fs.watch puede fallar en algunos entornos (Docker limitado, etc.) — no crítico
+    console.warn("[SpeedySign] No se pudo iniciar el watcher de index.html:", e);
+}
+
 if (fs.existsSync(DIST_DIR)) {
     app.get("*", (req, res) => {
         const skip = ["/api/", "/signed/", "/manifest/", "/download/", "/proxy"];

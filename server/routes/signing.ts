@@ -169,6 +169,10 @@ interface SigningProgress {
     message?: string;
     userId?: string;
     createdAt?: number;
+    /** Timestamp (ms) en que la fase actual comenzó */
+    phaseStartedAt?: number;
+    /** Tiempo transcurrido desde el inicio del job (ms) — calculado en cada emit */
+    elapsedMs?: number;
     // Resultados
     signedUrl?: string;
     manifestUrl?: string;
@@ -184,10 +188,21 @@ const jobControllers  = new Map<string, AbortController>();
 
 function emitProgress(jobId: string, event: Partial<SigningProgress> & Pick<SigningProgress, "phase">): void {
     const existing = progressStore.get(jobId) || { createdAt: Date.now() };
-    const merged = { ...existing, ...event } as SigningProgress;
-    if (!merged.createdAt) {
-        merged.createdAt = Date.now();
-    }
+    const now = Date.now();
+
+    // Detectar cambio de fase para registrar cuándo empezó
+    const phaseChanged = existing.phase !== event.phase;
+    const phaseStartedAt = phaseChanged ? now : (existing.phaseStartedAt ?? now);
+
+    const merged = {
+        ...existing,
+        ...event,
+        phaseStartedAt,
+        elapsedMs: now - (existing.createdAt ?? now),
+    } as SigningProgress;
+
+    if (!merged.createdAt) merged.createdAt = now;
+
     progressStore.set(jobId, merged);
     const clients = progressClients.get(jobId);
     if (!clients) return;

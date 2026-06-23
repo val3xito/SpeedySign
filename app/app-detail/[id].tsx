@@ -41,6 +41,7 @@ import { notify } from "../../utils/notify";
 import { useTranslation } from "react-i18next";
 import { useSigningContext } from "../../contexts/SigningContext";
 import { getImgProxyUrl } from "../../utils/imgProxy";
+import { isIOS } from "../../utils/platform";
 
 /**
  * Pantalla de detalle de app con proceso de firma.
@@ -65,13 +66,7 @@ export default function AppDetailScreen() {
     const { saveInstallation } = useInstalledApps();
 
     // Estado global de firma (persiste al navegar fuera de esta pantalla)
-    const { signingState, setSigningState, cancelRef, abortControllerRef } = useSigningContext();
-
-    const isIOS = Platform.OS === 'ios' || 
-        (Platform.OS === 'web' && typeof navigator !== 'undefined' && (
-            /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-        ));
+    const { signingState, setSigningState, cancelRef, abortControllerRef, requestPushPermission } = useSigningContext();
 
     // Solo mostrar el progreso si nombre + versión + repo coinciden con esta app concreta
     const isThisApp =
@@ -95,14 +90,9 @@ export default function AppDetailScreen() {
             steps: typeof updater === "function" ? updater(p.steps) : updater,
         }));
 
-    const [signerPreference, setSignerPreference] = useState<"auto" | "zsign-rs">("zsign-rs");
     // Opciones de personalización pre-firma
     const [ipaOptions, setIpaOptions] = useState<IpaCustomOptions>(defaultIpaOptions());
     const [enableAntivirus, setEnableAntivirus] = useState(true);
-
-    React.useEffect(() => {
-        setSignerPreference("zsign-rs");
-    }, []);
 
     // Estado de traducción
     const [translatedDesc, setTranslatedDesc] = useState<string | null>(null);
@@ -147,6 +137,9 @@ export default function AppDetailScreen() {
         cancelRef.current = false;
         const controller = new AbortController();
         abortControllerRef.current = controller;
+
+        // Solicitar permiso de notificaciones (primer tap del usuario — requisito del browser)
+        requestPushPermission();
 
         setSigningState({
             isSigning: true,
@@ -217,7 +210,7 @@ export default function AppDetailScreen() {
                     cert,
                     ipaOptions.customBundleId || params.id,
                     ipaOptions.customVersion  || params.version,
-                    signerPreference,
+                    "zsign-rs",
                     {
                         customBundleId:           ipaOptions.customBundleId,
                         customName:               ipaOptions.customName,
@@ -421,11 +414,11 @@ export default function AppDetailScreen() {
         params.version,
         params.icon,
         params.repoName,
-        signerPreference,
         ipaOptions,
         signingState.isSigning,
         isThisApp,
         saveInstallation,
+        requestPushPermission,
         t
     ]);
 

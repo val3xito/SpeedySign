@@ -28,7 +28,7 @@ const BIN_DIR      = path.join(SERVER_ROOT, 'bin');
 const ZSIGN_RS_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'zsign-rs.exe' : 'zsign-rs');
 const SENSITIVE_ARG_FLAGS = new Set(['--password']);
 
-export type SignerType = 'auto' | 'zsign-rs';
+export type SignerType = 'zsign-rs';
 
 export interface SignOptions {
     inputPath:          string;
@@ -186,7 +186,6 @@ export async function executeSign(
     const errors: string[] = [];
 
     console.log(`\n⚙️  Firmando "${appName}" con zsign-rs`);
-    if (options.sha256Only)         console.log('  ⚡ SHA-256 only activado (no-op para zsign-rs)');
 
     const tryZsignRs = async () => { 
         try { 
