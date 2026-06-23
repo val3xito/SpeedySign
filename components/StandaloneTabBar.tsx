@@ -327,8 +327,9 @@ export function StandaloneTabBar() {
         <View
             style={[
                 styles.root,
-                { bottom: tabBarBottomOffset },
+                Platform.OS !== "web" && { bottom: tabBarBottomOffset },
             ]}
+            className={Platform.OS === "web" ? "standalone-tabbar-root" : undefined}
             pointerEvents="box-none"
         >
             <Animated.View style={[styles.wrapper, wrapperAnimStyle, { height: BAR_HEIGHT + BUBBLE_RISE }]}>

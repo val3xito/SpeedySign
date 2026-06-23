@@ -74,3 +74,13 @@ input, textarea, select {
     --safe-area-inset-left:   env(safe-area-inset-left, 0px);
     --safe-area-inset-right:  env(safe-area-inset-right, 0px);
 }
+
+/* Fix para posicionamiento del menú inferior (Navbar) y burbuja en iOS standalone PWA */
+.standalone-tabbar-root {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 18px) !important;
+}
+
+.floating-signing-bubble-root {
+    position: fixed !important;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 102px) !important;
+}

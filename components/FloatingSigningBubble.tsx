@@ -139,10 +139,9 @@ export function FloatingSigningBubble() {
                 exiting={FadeOutDown.duration(250)}
                 style={[
                     styles.bubbleWrapper,
-                    { bottom: bottomOffset },
-                    // En web, usar position fixed para que no se mueva al hacer scroll
-                    Platform.OS === "web" && { position: "fixed" as any },
+                    Platform.OS !== "web" && { bottom: bottomOffset },
                 ]}
+                className={Platform.OS === "web" ? "floating-signing-bubble-root" : undefined}
                 pointerEvents="box-none"
             >
                 <Pressable
