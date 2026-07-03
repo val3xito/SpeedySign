@@ -14,8 +14,12 @@ RUN apt-get update && apt-get install -y \
     git \
     g++ \
     make \
+    cmake \
     pkg-config \
     libssl-dev \
+    libminizip-dev \
+    zlib1g-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /usr/src/zsign
 RUN git clone https://github.com/zhlynn/zsign.git . \
