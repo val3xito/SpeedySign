@@ -23,7 +23,7 @@ import fs from "fs";
 import path from "path";
 import multer from "multer";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
-import { executeSign } from "../services/signingService";
+import { executeSign, SignerType } from "../services/signingService";
 import { inspectIPA, modifyIPA } from "../services/ipaService";
 import { checkCertificateOCSP } from "../services/ocspService";
 import { downloadFile, getBaseUrlFromRequest, resolveUrlFilename, resolveUrlInfo } from "../utils/network";
@@ -46,6 +46,23 @@ const BIN_DIR    = path.resolve(SERVER_ROOT, "bin");
 const ZSIGN_RS_PATH = process.platform === "win32"
     ? path.join(BIN_DIR, "zsign-rs.exe")
     : path.join(BIN_DIR, "zsign-rs");
+const ZSIGN_PATH = process.platform === "win32"
+    ? path.join(BIN_DIR, "zsign.exe")
+    : path.join(BIN_DIR, "zsign");
+
+function normalizeSigner(value: any): SignerType {
+    return value === "zsign-rs" || value === "zsign" || value === "auto"
+        ? value
+        : "auto";
+}
+
+function isSignerAvailable(signerPref: SignerType): boolean {
+    const zsignRsReady = fs.existsSync(ZSIGN_RS_PATH);
+    const zsignReady = fs.existsSync(ZSIGN_PATH);
+    if (signerPref === "zsign-rs") return zsignRsReady;
+    if (signerPref === "zsign") return zsignReady;
+    return zsignRsReady || zsignReady;
+}
 
 // Leer credenciales opcionales del proyecto principal (modo local)
 let P12_PATH      = "";
@@ -179,6 +196,7 @@ interface SigningProgress {
     installUrl?: string;
     fileName?: string;
     size?: number;
+    signerUsed?: string;
 }
 
 const progressStore   = new Map<string, SigningProgress>();
@@ -319,8 +337,11 @@ signingRouter.get("/sign/status/:jobId", requireAuth, (req: AuthRequest, res: Re
 // No expone rutas de binarios, configuración interna ni conteo de archivos.
 
 signingRouter.get("/status", (_req: Request, res: Response) => {
-    const signerReady = fs.existsSync(ZSIGN_RS_PATH);
-    res.json({ status: "ok", ready: signerReady });
+    const signers = {
+        "zsign-rs": fs.existsSync(ZSIGN_RS_PATH),
+        zsign: fs.existsSync(ZSIGN_PATH),
+    };
+    res.json({ status: "ok", ready: signers["zsign-rs"] || signers.zsign, signers });
 });
 
 // ── POST /sign ────────────────────────────────────────────────────────────────
@@ -429,9 +450,10 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
     const p12PathToUse       = p12File ? p12File.path : P12_PATH;
     const provisionPathToUse = provisionFile ? provisionFile.path : PROVISION_PATH;
     const p12PasswordToUse   = p12File ? (p12Password || "") : P12_PASSWORD;
+    const signerPref         = normalizeSigner(signer);
 
-    if (!fs.existsSync(ZSIGN_RS_PATH)) {
-        return res.status(503).json({ error: "Servicio de firma no disponible" });
+    if (!isSignerAvailable(signerPref)) {
+        return res.status(503).json({ error: "Servicio de firma no disponible para el motor seleccionado" });
     }
     if (!fs.existsSync(p12PathToUse)) {
         return res.status(503).json({ error: "Certificado .p12 no encontrado" });
@@ -629,6 +651,8 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
                 if (jobId) emitProgress(jobId, { phase: "sign", message: `Esperando en cola (Posición: ${waitingCount})...` });
             }
 
+            let signingExecutionResult: { signerUsed: string } | null = null;
+
             await signQueue.enqueue(async () => {
                 if (signal.aborted) {
                     throw new Error("Cancelled");
@@ -649,7 +673,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
                     ipaToSign = modifiedIpaPath;
                 }
 
-                await executeSign({
+                signingExecutionResult = await executeSign({
                     inputPath:        ipaToSign,
                     outputPath:       signedIpaPath,
                     bundleId:         customBundleId || bundleId,
@@ -657,7 +681,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
                     p12Pass:          p12PasswordToUse,
                     provisionPath:    provisionPathToUse,
                     appName,
-                    signerPref:       signer || "auto",
+                    signerPref,
                     customName:       customName    || undefined,
                     customVersion:    customVersion || undefined,
                     sha256Only:       sha256Only    === "true",
@@ -691,6 +715,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
                     installUrl,
                     fileName:   signedFileName,
                     size:       signedStats.size,
+                    signerUsed: signingExecutionResult?.signerUsed,
                 });
                 cleanupJob(jobId);
             }

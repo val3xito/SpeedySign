@@ -36,6 +36,7 @@ import {
     cancelSigningJob,
     SigningResult,
     SigningProgressEvent,
+    SigningEngine,
 } from "../../utils/ipaDownloader";
 import { notify } from "../../utils/notify";
 import { useTranslation } from "react-i18next";
@@ -93,6 +94,16 @@ export default function AppDetailScreen() {
     // Opciones de personalización pre-firma
     const [ipaOptions, setIpaOptions] = useState<IpaCustomOptions>(defaultIpaOptions());
     const [enableAntivirus, setEnableAntivirus] = useState(true);
+    const [selectedSigner, setSelectedSigner] = useState<SigningEngine>("auto");
+    const signingEngineOptions: {
+        value: SigningEngine;
+        label: string;
+        icon: React.ComponentProps<typeof Ionicons>["name"];
+    }[] = [
+        { value: "auto", label: "Auto", icon: "git-compare-outline" },
+        { value: "zsign-rs", label: "zsign-rs", icon: "flash-outline" },
+        { value: "zsign", label: "zsign", icon: "hammer-outline" },
+    ];
 
     // Estado de traducción
     const [translatedDesc, setTranslatedDesc] = useState<string | null>(null);
@@ -210,7 +221,7 @@ export default function AppDetailScreen() {
                     cert,
                     ipaOptions.customBundleId || params.id,
                     ipaOptions.customVersion  || params.version,
-                    "zsign-rs",
+                    selectedSigner,
                     {
                         customBundleId:           ipaOptions.customBundleId,
                         customName:               ipaOptions.customName,
@@ -244,10 +255,13 @@ export default function AppDetailScreen() {
                 );
                 if (cancelRef.current) throw new Error("cancelled");
                 setProgress(85);
+                const signedDetail = signingResult.signerUsed
+                    ? `Firmado con ${signingResult.signerUsed}: ${formatSize(signingResult.size)} ✓`
+                    : `Firmado correctamente: ${formatSize(signingResult.size)} ✓`;
                 updateStep(
                     "sign",
                     "completed",
-                    `Firmado correctamente: ${formatSize(signingResult.size)} ✓`
+                    signedDetail
                 );
             } catch (signError: any) {
                 const msg = signError.message || t("appDetail.errorUnknown", "Error desconocido");
@@ -415,6 +429,7 @@ export default function AppDetailScreen() {
         params.icon,
         params.repoName,
         ipaOptions,
+        selectedSigner,
         signingState.isSigning,
         isThisApp,
         saveInstallation,
@@ -831,7 +846,7 @@ export default function AppDetailScreen() {
                                 alignItems: "center",
                             }}>
                                 <Ionicons
-                                    name={enableAntivirus ? "shield-checkmark" : "shield-alert"}
+                                    name={enableAntivirus ? "shield-checkmark" : "warning-outline"}
                                     size={22}
                                     color={enableAntivirus ? colors.accent : "#FF4D4D"}
                                 />
@@ -880,7 +895,7 @@ export default function AppDetailScreen() {
                 {/* Botones de acción */}
                 {!isSigning && !signingComplete && (
                     <Animated.View entering={FadeInUp.delay(500).duration(400)}>
-                        <View style={{ flexDirection: "row", gap: 12, alignItems: "center", marginBottom: 20 }}>
+                        <View style={{ flexDirection: "row", gap: 12, alignItems: "center", marginBottom: 10 }}>
                             {/* Botón Firmar e Instalar */}
                             <Pressable
                                 onPress={startSigningProcess}
@@ -936,7 +951,60 @@ export default function AppDetailScreen() {
                             ) : null}
                         </View>
 
-                        {/* El motor de firma zsign-rs es el predeterminado */}
+                        <View
+                            style={{
+                                backgroundColor: colors.card,
+                                borderRadius: 14,
+                                borderWidth: 1,
+                                borderColor: colors.cardBorder,
+                                padding: 6,
+                                flexDirection: "row",
+                                gap: 6,
+                                marginBottom: 20,
+                            }}
+                        >
+                            {signingEngineOptions.map((option) => {
+                                const active = selectedSigner === option.value;
+                                return (
+                                    <Pressable
+                                        key={option.value}
+                                        onPress={() => setSelectedSigner(option.value)}
+                                        accessibilityRole="button"
+                                        style={({ pressed }) => ({
+                                            flex: 1,
+                                            minHeight: 42,
+                                            borderRadius: 10,
+                                            backgroundColor: active ? `${colors.accent}20` : "transparent",
+                                            borderWidth: 1,
+                                            borderColor: active ? `${colors.accent}70` : "transparent",
+                                            flexDirection: "row",
+                                            justifyContent: "center",
+                                            alignItems: "center",
+                                            gap: 6,
+                                            paddingHorizontal: 8,
+                                            opacity: pressed ? 0.78 : 1,
+                                        })}
+                                    >
+                                        <Ionicons
+                                            name={option.icon}
+                                            size={17}
+                                            color={active ? colors.accent : colors.textSecondary}
+                                        />
+                                        <Text
+                                            numberOfLines={1}
+                                            adjustsFontSizeToFit
+                                            style={{
+                                                color: active ? colors.accent : colors.textSecondary,
+                                                fontSize: 12,
+                                                fontWeight: active ? "700" : "600",
+                                            }}
+                                        >
+                                            {option.label}
+                                        </Text>
+                                    </Pressable>
+                                );
+                            })}
+                        </View>
                     </Animated.View>
                 )}
 

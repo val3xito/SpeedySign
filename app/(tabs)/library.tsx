@@ -298,7 +298,7 @@ export default function LibraryScreen() {
 
         setResigningId(app.id);
         try {
-            const result = await signIPAWithBackend(app.ipaUrl, app.name, cert, app.bundleId, app.version, "zsign-rs");
+            const result = await signIPAWithBackend(app.ipaUrl, app.name, cert, app.bundleId, app.version, "auto");
 
             if (isIOS) {
                 notify.confirm(
@@ -354,7 +354,7 @@ export default function LibraryScreen() {
         for (const app of appsWithUrl) {
             setResigningId(app.id);
             try {
-                const result = await signIPAWithBackend(app.ipaUrl!, app.name, cert, app.bundleId, app.version, "zsign-rs");
+                const result = await signIPAWithBackend(app.ipaUrl!, app.name, cert, app.bundleId, app.version, "auto");
 
                 if (isIOS) {
                     notify.confirm(

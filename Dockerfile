@@ -1,5 +1,5 @@
 # SpeedySign - Full Stack
-# Compila zsign-rs + construye frontend Expo + servidor Node.js
+# Compila zsign-rs + zsign original + construye frontend Expo + servidor Node.js
 
 # Compilar zsign-rs en Rust (jveko/zsign-rs)
 FROM rust:1-bookworm AS rust-builder
@@ -7,11 +7,28 @@ WORKDIR /usr/src/zsign-rs
 RUN git clone https://github.com/jveko/zsign-rs.git . \
     && cargo build --release -p zsign-cli
 
+# Compilar zsign original (zhlynn/zsign)
+FROM debian:bookworm-slim AS zsign-builder
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    git \
+    g++ \
+    make \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /usr/src/zsign
+RUN git clone https://github.com/zhlynn/zsign.git . \
+    && cd build/linux \
+    && make clean \
+    && make
+
 # ── Build del frontend ──
 FROM node:20-slim AS frontend-builder
 
 # Truco para forzar que esta etapa espere a que los signers terminen (evita problemas de concurrencia de memoria)
 COPY --from=rust-builder /usr/src/zsign-rs/target/release/zsign-cli /tmp/zsign-dummy
+COPY --from=zsign-builder /usr/src/zsign/bin/zsign /tmp/zsign-original-dummy
 
 WORKDIR /frontend
 COPY package.json package-lock.json ./
@@ -44,6 +61,7 @@ FROM node:20-slim
 RUN apt-get update && apt-get install -y \
     libssl3 \
     libminizip1 \
+    libstdc++6 \
     openssl \
     zlib1g \
     clamav \
@@ -77,7 +95,8 @@ COPY --from=frontend-builder /frontend/dist /app/dist
 # Copiar zsign-rs compilado
 RUN mkdir -p /app/bin
 COPY --from=rust-builder /usr/src/zsign-rs/target/release/zsign-cli /app/bin/zsign-rs
-RUN chmod +x /app/bin/zsign-rs
+COPY --from=zsign-builder /usr/src/zsign/bin/zsign /app/bin/zsign
+RUN chmod +x /app/bin/zsign-rs /app/bin/zsign
 
 # Crear directorios necesarios y ajustar permisos para el usuario 'node'
 RUN mkdir -p signed temp && chown -R node:node signed temp

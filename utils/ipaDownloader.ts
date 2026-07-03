@@ -205,6 +205,8 @@ export function getSigningServerURL(): string {
 }
 
 /** Resultado de la firma con el backend */
+export type SigningEngine = "auto" | "zsign-rs" | "zsign";
+
 export interface SigningResult {
     /** URL del IPA firmado */
     signedUrl: string;
@@ -216,6 +218,7 @@ export interface SigningResult {
     fileName: string;
     /** Tamaño del IPA firmado en bytes */
     size: number;
+    signerUsed?: string;
 }
 
 /** Evento de progreso emitido por el backend vía SSE / polling */
@@ -230,6 +233,7 @@ export interface SigningProgressEvent {
     elapsedMs?: number;
     /** Timestamp de cuándo empezó la fase actual */
     phaseStartedAt?: number;
+    signerUsed?: string;
 }
 
 
@@ -274,7 +278,7 @@ export async function signIPAWithBackend(
     cert: Certificate,
     bundleId?: string,
     version?: string,
-    signer: "auto" | "zsign-rs" = "auto",
+    signer: SigningEngine = "auto",
     customOptions?: IpaSignCustomOptions,
     onProgress?: (event: SigningProgressEvent) => void,
     onJobReady?: (jobId: string) => void,
@@ -462,6 +466,7 @@ export async function signIPAWithBackend(
                                         installUrl:  statusData.installUrl,
                                         fileName:    statusData.fileName,
                                         size:        statusData.size,
+                                        signerUsed:  statusData.signerUsed,
                                     });
                                     break;
                                 } else if (statusData.phase === "error") {

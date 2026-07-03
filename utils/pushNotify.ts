@@ -86,14 +86,15 @@ export function showSigningDoneNotification(
     if (typeof document !== "undefined" && !document.hidden) return;
 
     try {
-        const notification = new Notification(title, {
+        const notificationOptions: NotificationOptions & { renotify?: boolean } = {
             body,
             icon: ICON,
             badge: ICON,
             tag: "speedysign-signing-done", // Reemplaza notificaciones anteriores del mismo tipo
             renotify: false,
             silent: false,
-        });
+        };
+        const notification = new Notification(title, notificationOptions);
 
         if (onClick) {
             notification.onclick = (e) => {

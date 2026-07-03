@@ -111,39 +111,52 @@ function runScanCommand(command: string, filePath: string, timeoutMs: number): P
     return new Promise((resolve) => {
         let timer: NodeJS.Timeout | null = null;
         let resolved = false;
-
-        const proc = execFile(command, [filePath], { maxBuffer: 1024 * 1024 }, (error: any, stdout: string) => {
-            if (timer) clearTimeout(timer);
+        const finish = (result: { success: boolean; skipFallback: boolean }) => {
             if (resolved) return;
             resolved = true;
+            if (timer) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            resolve(result);
+        };
+
+        const proc = execFile(command, [filePath], { maxBuffer: 1024 * 1024 }, (error: any, stdout: string) => {
+            if (resolved) return;
 
             if (error) {
                 // ENOENT: el comando no está instalado
                 if (error.code === "ENOENT") {
-                    return resolve({ success: false, skipFallback: false });
+                    return finish({ success: false, skipFallback: false });
                 }
                 // Código 1: virus detectado
                 if (error.code === 1) {
                     console.error(`[SpeedySign Antivirus] ❌ ¡AMENAZA DETECTADA por ${command}! El archivo \"${path.basename(filePath)}\" contiene malware.`);
                     console.error(`[SpeedySign Antivirus] Detalle del escaneo:\n${stdout}`);
-                    return resolve({ success: false, skipFallback: true });
+                    return finish({ success: false, skipFallback: true });
                 }
                 // Código 2 u otro: error de conexión al daemon o DB
-                return resolve({ success: false, skipFallback: false });
+                return finish({ success: false, skipFallback: false });
             }
 
             // Éxito (exit code 0): archivo limpio
             console.log(`[SpeedySign Antivirus] 🛡️  Escaneo exitoso con ${command}: \"${path.basename(filePath)}\" está limpio.`);
-            resolve({ success: true, skipFallback: true });
+            finish({ success: true, skipFallback: true });
         });
 
         timer = setTimeout(() => {
             if (resolved) return;
             resolved = true;
+            timer = null;
             try { proc.kill("SIGTERM"); } catch {}
             console.warn(`[SpeedySign Antivirus] ⚠️  El escaneo con ${command} excedió el tiempo límite de ${timeoutMs / 1000}s. Forzando fail-open.`);
             resolve({ success: true, skipFallback: true });
         }, timeoutMs);
+        timer.unref?.();
+        if (resolved && timer) {
+            clearTimeout(timer);
+            timer = null;
+        }
     });
 }
 
