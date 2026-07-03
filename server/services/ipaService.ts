@@ -53,22 +53,28 @@ function findInfoPlist(zip: AdmZip): AdmZip.IZipEntry | null {
 
 /**
  * Parsea un buffer de plist (XML o binary).
- * Intenta con la librería plist; fallback a regex básico para campos críticos.
+ * Intenta con XML/plist; si es binary usa bplist-parser; fallback a regex.
  */
 async function parsePlist(buffer: Buffer): Promise<Record<string, any>> {
-    const plist = await getPlist();
-    if (plist) {
-        try {
-            // Intentar XML primero
-            const str = buffer.toString('utf8');
-            if (str.includes('<?xml') || str.includes('<!DOCTYPE plist')) {
+    try {
+        const str = buffer.toString('utf8');
+        if (str.includes('<?xml') || str.includes('<!DOCTYPE plist')) {
+            const plist = await getPlist();
+            if (plist) {
                 return plist.parse(str) as Record<string, any>;
             }
-            // Binary plist — usar bplist vía plist
-            return plist.parse(buffer as any) as Record<string, any>;
-        } catch (e) {
-            console.warn('[ipaService] plist parse error, usando fallback regex:', e);
         }
+
+        // Si es binary plist (empieza con 'bplist')
+        if (buffer.length > 6 && buffer.toString('utf8', 0, 6) === 'bplist') {
+            const bplistParser = require('bplist-parser');
+            const result = bplistParser.parseBuffer(buffer);
+            if (result && result.length > 0) {
+                return result[0];
+            }
+        }
+    } catch (e) {
+        console.warn('[ipaService] plist parse error, usando fallback:', e);
     }
     // Fallback: regex básico para extraer campos clave de plist XML
     return parsePlistRegex(buffer.toString('utf8'));
