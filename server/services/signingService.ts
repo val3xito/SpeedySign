@@ -134,6 +134,12 @@ function runTool(
         console.log(`  [SpeedySign] ${toolName} ${redactArgsForLog(args, sensitiveArgFlags)}...`);
 
         const proc = execFile(toolPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+            if (stdout) {
+                console.log(`  [SpeedySign] ${toolName} stdout:\n${redactText(stdout, args, sensitiveArgFlags)}`);
+            }
+            if (stderr) {
+                console.warn(`  [SpeedySign] ${toolName} stderr:\n${redactText(stderr, args, sensitiveArgFlags)}`);
+            }
             if (error) {
                 if (signal?.aborted) return reject(new Error('Cancelled'));
                 const details = redactText(stderr || stdout || error.message, args, sensitiveArgFlags);
