@@ -667,7 +667,7 @@ export default function AppDetailScreen() {
                             backgroundColor: colors.card,
                             borderRadius: 14,
                             padding: 16,
-                            marginBottom: 20,
+                            marginBottom: 14,
                             borderWidth: 1,
                             borderColor: colors.cardBorder,
                         }}
@@ -806,7 +806,7 @@ export default function AppDetailScreen() {
                             padding: 14,
                             flexDirection: "row",
                             alignItems: "center",
-                            marginBottom: 16,
+                            marginBottom: 14,
                             borderWidth: 1,
                             borderColor: "#FFC10740",
                         }}
@@ -827,7 +827,7 @@ export default function AppDetailScreen() {
 
                 {/* IPA Customizer — opciones pre-firma */}
                 {!isSigning && !signingComplete && (
-                    <Animated.View entering={FadeInDown.delay(400).duration(400)} style={{ marginBottom: 12 }}>
+                    <Animated.View entering={FadeInDown.delay(400).duration(400)} style={{ marginBottom: 14 }}>
                         <IpaCustomizer
                             options={ipaOptions}
                             onChange={setIpaOptions}
@@ -842,7 +842,7 @@ export default function AppDetailScreen() {
 
                 {/* Botón de Antivirus */}
                 {!isSigning && !signingComplete && (
-                    <Animated.View entering={FadeInDown.delay(450).duration(400)} style={{ marginBottom: 20 }}>
+                    <Animated.View entering={FadeInDown.delay(450).duration(400)} style={{ marginBottom: 14 }}>
                         <Pressable
                             onPress={() => setEnableAntivirus(!enableAntivirus)}
                             style={({ pressed }) => ({
@@ -915,7 +915,7 @@ export default function AppDetailScreen() {
                 {/* Botones de acción */}
                 {!isSigning && !signingComplete && (
                     <Animated.View entering={FadeInUp.delay(500).duration(400)}>
-                        <View style={{ flexDirection: "row", gap: 12, alignItems: "center", marginBottom: 10 }}>
+                        <View style={{ flexDirection: "row", gap: 12, alignItems: "center", marginBottom: 14 }}>
                             {/* Botón Firmar e Instalar */}
                             <Pressable
                                 onPress={startSigningProcess}
