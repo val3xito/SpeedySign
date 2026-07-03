@@ -140,6 +140,26 @@ export default function AppDetailScreen() {
             return;
         }
 
+        // Verificar si la app está personalizada y se seleccionó zsign-rs
+        const activeCount = [
+            ipaOptions.customBundleId,
+            ipaOptions.customName,
+            ipaOptions.customVersion,
+            ipaOptions.enableFileSharing,
+            ipaOptions.removeDeviceRestrictions,
+            ipaOptions.liquidGlass,
+            ipaOptions.sha256Only,
+            ipaOptions.dylibFiles.length > 0,
+        ].filter(Boolean).length;
+
+        if (activeCount > 0 && selectedSigner === "zsign-rs") {
+            notify.error(
+                t("common.error", "Error"),
+                "El motor zsign-rs (Rust) no admite la personalización de IPAs. Selecciona el motor 'zsign' (C++) para poder aplicar tus personalizaciones."
+            );
+            return;
+        }
+
         if (!params.downloadURL || params.downloadURL.trim() === "") {
             notify.error(t("common.error", "Error"), t("appDetail.errorNoDownload", "Esta app no tiene una URL de descarga disponible."));
             return;
@@ -807,7 +827,7 @@ export default function AppDetailScreen() {
 
                 {/* IPA Customizer — opciones pre-firma */}
                 {!isSigning && !signingComplete && (
-                    <Animated.View entering={FadeInDown.delay(400).duration(400)} style={{ marginBottom: 16 }}>
+                    <Animated.View entering={FadeInDown.delay(400).duration(400)} style={{ marginBottom: 12 }}>
                         <IpaCustomizer
                             options={ipaOptions}
                             onChange={setIpaOptions}

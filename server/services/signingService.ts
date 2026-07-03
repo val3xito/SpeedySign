@@ -44,6 +44,7 @@ export interface SignOptions {
     userId?:            string;
     customName?:        string;
     customVersion?:     string;
+    isCustomized?:      boolean;
     entitlementsPath?:  string;
     sha256Only?:        boolean;
     compressionLevel?:  number;
@@ -275,15 +276,17 @@ function getSignerSensitiveArgFlags(signer: ConcreteSignerType): Set<string> {
 }
 
 function getUnsupportedReason(signer: ConcreteSignerType, opts: SignOptions): string | null {
-    if (
-        signer === 'zsign-rs' &&
-        (
+    if (signer === 'zsign-rs') {
+        if (opts.isCustomized) {
+            return 'El motor zsign-rs (Rust) no admite personalización de IPAs.';
+        }
+        if (
             (opts.entitlementsPath && fs.existsSync(opts.entitlementsPath)) ||
             (opts.dylibPaths && opts.dylibPaths.length > 0) ||
             (opts.weakDylibPaths && opts.weakDylibPaths.length > 0)
-        )
-    ) {
-        return 'El motor zsign-rs (Rust) no soporta entitlements personalizados o inyeccion de dylibs.';
+        ) {
+            return 'El motor zsign-rs (Rust) no soporta entitlements personalizados o inyección de dylibs.';
+        }
     }
     return null;
 }

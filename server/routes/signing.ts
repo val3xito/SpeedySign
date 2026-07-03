@@ -452,6 +452,20 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
     const p12PasswordToUse   = p12File ? (p12Password || "") : P12_PASSWORD;
     const signerPref         = normalizeSigner(signer);
 
+    const hasPlistMods = enableFileSharing === "true" || removeDeviceRestrictions === "true" || liquidGlass === "true"
+        || !!customBundleId || !!customName || !!customVersion;
+    const hasDylibs = dylibFiles.length > 0;
+    const hasSha256 = sha256Only === "true";
+    const isCustomized = hasPlistMods || hasDylibs || hasSha256;
+
+    if (isCustomized && signerPref === "zsign-rs") {
+        [ipaFile, ...dylibFiles].forEach((uf: any) => {
+            if (uf?.path && fs.existsSync(uf.path)) try { fs.unlinkSync(uf.path); } catch { }
+        });
+        sensitiveFiles.forEach(f => { if (f && fs.existsSync(f)) secureDelete(f); });
+        return res.status(400).json({ error: "El motor zsign-rs (Rust) no admite la personalización de IPAs. Selecciona el motor 'zsign' (C++) para poder aplicar tus personalizaciones." });
+    }
+
     if (!isSignerAvailable(signerPref)) {
         return res.status(503).json({ error: "Servicio de firma no disponible para el motor seleccionado" });
     }
@@ -537,8 +551,6 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
     const signedIpaPath  = path.join(SIGNED_DIR, signedFileName);
     const modifiedIpaPath = path.join(TEMP_DIR, `${fileToken}_modified.ipa`);
     const savedDylibPaths: string[] = dylibFiles.map((f: any) => f.path);
-    const hasPlistMods = enableFileSharing === "true" || removeDeviceRestrictions === "true" || liquidGlass === "true"
-        || !!customBundleId || !!customName || !!customVersion;
 
     console.log(`\n📦 Nueva solicitud de firma (asíncrona): ${appName} (user: ${userId.slice(0, 8)}...)`);
 
@@ -688,6 +700,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
                     compressionLevel: compressionLevel != null ? parseInt(compressionLevel, 10) : undefined,
                     dylibPaths:       savedDylibPaths,
                     userId,
+                    isCustomized,
                 }, signal, clientIp);
             }, signal);
 

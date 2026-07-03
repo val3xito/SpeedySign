@@ -337,7 +337,7 @@ export function IpaCustomizer({ options, onChange, ipaInfo }: Props) {
     return (
         <Animated.View
             entering={FadeInDown.delay(350).duration(350)}
-            style={{ marginBottom: 20 }}
+            style={{ marginBottom: 0 }}
         >
             {/*
              * Único contenedor card con overflow:hidden.
@@ -352,16 +352,16 @@ export function IpaCustomizer({ options, onChange, ipaInfo }: Props) {
                 borderColor: open ? `${colors.accent}45` : colors.cardBorder,
                 overflow: "hidden",
             }}>
-                {/* ── Header colapsable (BLOQUEADO TEMPORALMENTE) ── */}
+                {/* ── Header colapsable ── */}
                 <Pressable
-                    onPress={() => {}} // Bloqueado
-                    style={{
+                    onPress={() => setOpen(!open)}
+                    style={({ pressed }) => ({
                         flexDirection: "row",
                         alignItems: "center",
                         padding: 16,
                         backgroundColor: "transparent",
-                        opacity: 0.6,
-                    }}
+                        opacity: pressed ? 0.85 : 1,
+                    })}
                 >
                     <View style={{
                         width: 38,
@@ -385,17 +385,19 @@ export function IpaCustomizer({ options, onChange, ipaInfo }: Props) {
                             Personalizar IPA
                         </Text>
                         <Text style={{
-                            color: colors.accent,
+                            color: activeCount > 0 ? colors.accent : colors.textSecondary,
                             fontSize: 12,
                             marginTop: 2,
-                            fontWeight: "600",
+                            fontWeight: activeCount > 0 ? "600" : "400",
                         }}>
-                            🚀 Próximamente
+                            {activeCount > 0
+                                ? `${activeCount} ${activeCount === 1 ? 'modificación activa' : 'modificaciones activas'}`
+                                : "Modificar nombre, bundle, tweaks..."}
                         </Text>
                     </View>
 
                     <Ionicons
-                        name="lock-closed"
+                        name={open ? "chevron-up" : "chevron-down"}
                         size={18}
                         color={colors.textSecondary}
                     />
