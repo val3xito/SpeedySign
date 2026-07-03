@@ -4,8 +4,10 @@
  */
 
 import { execFile } from 'child_process';
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { secureDelete } from '../utils/secureDelete';
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL      = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
@@ -147,6 +149,53 @@ function runTool(
     });
 }
 
+/**
+ * Convierte un certificado P12 a formato legacy para compatibilidad con zsign C++.
+ * Los certificados modernos usan cifrado PKCS#12 con algoritmos que zsign C++ no entiende.
+ * Sin esta conversión, zsign firma sin error pero produce firmas inválidas que iOS rechaza.
+ */
+async function convertP12ToLegacy(p12Path: string, password: string): Promise<string> {
+    return new Promise((resolve) => {
+        const uniqueId   = randomUUID();
+        const dir        = path.dirname(p12Path);
+        const legacyPath = path.join(dir, `${uniqueId}_legacy.p12`);
+        const pemPath    = path.join(dir, `${uniqueId}_tmp.pem`);
+
+        // Paso 1: P12 → PEM sin cifrar
+        execFile('openssl', [
+            'pkcs12', '-legacy',
+            '-in',       p12Path,
+            '-passin',   `pass:${password}`,
+            '-nodes',
+            '-out',      pemPath,
+        ], { timeout: 5000 }, (err1) => {
+            if (err1) {
+                console.warn(`  [SpeedySign] No se pudo convertir el P12 a legacy: ${err1.code || err1.message}`);
+                // openssl no disponible o P12 ya es legacy — usar original
+                return resolve(p12Path);
+            }
+            // Paso 2: PEM → P12 legacy
+            execFile('openssl', [
+                'pkcs12', '-legacy',
+                '-export',
+                '-in',      pemPath,
+                '-out',     legacyPath,
+                '-passout', `pass:${password}`,
+            ], { timeout: 5000 }, (err2) => {
+                // El PEM contiene la clave privada en texto claro → eliminación segura
+                if (fs.existsSync(pemPath)) secureDelete(pemPath);
+
+                if (err2 || !fs.existsSync(legacyPath)) {
+                    console.warn(`  [SpeedySign] No se pudo re-empaquetar el P12 legacy: ${err2?.message || 'archivo no generado'}`);
+                    return resolve(p12Path);
+                }
+                console.log('  [SpeedySign] P12 convertido a formato legacy para zsign C++');
+                resolve(legacyPath);
+            });
+        });
+    });
+}
+
 function buildZsignRsArgs(opts: SignOptions): string[] {
     const args: string[] = [
         '-p', opts.p12Path,
@@ -169,12 +218,10 @@ function buildZsignRsArgs(opts: SignOptions): string[] {
 function buildZsignArgs(opts: SignOptions): string[] {
     const args: string[] = [
         '-k', opts.p12Path,
+        '-p', opts.p12Pass || '',
         '-m', opts.provisionPath,
         '-o', opts.outputPath,
     ];
-    if (opts.p12Pass) {
-        args.push('-p', opts.p12Pass);
-    }
     if (opts.bundleId) {
         args.push('-b', opts.bundleId);
     }
@@ -188,16 +235,16 @@ function buildZsignArgs(opts: SignOptions): string[] {
         args.push('-e', opts.entitlementsPath);
     }
     if (opts.sha256Only) {
-        args.push('-2');
+        args.push('--sha256_only');
     }
     if (opts.compressionLevel != null && opts.compressionLevel >= 0 && opts.compressionLevel <= 9) {
         args.push('-z', String(opts.compressionLevel));
     }
     for (const dylibPath of opts.dylibPaths || []) {
-        args.push('-l', dylibPath);
+        if (fs.existsSync(dylibPath)) args.push('-l', dylibPath);
     }
     for (const weakDylibPath of opts.weakDylibPaths || []) {
-        args.push('-w', '-l', weakDylibPath);
+        if (fs.existsSync(weakDylibPath)) args.push('-w', weakDylibPath);
     }
     args.push(opts.inputPath);
     return args;
@@ -247,48 +294,72 @@ export async function executeSign(
     const mode = signerPref === 'auto' ? 'auto' : 'manual';
     const errors: string[] = [];
 
+    // Para zsign C++: convertir P12 a formato legacy si es necesario
+    let legacyP12Path: string | null = null;
+    const cleanupLegacyP12 = () => {
+        if (legacyP12Path && legacyP12Path !== options.p12Path && fs.existsSync(legacyP12Path)) {
+            secureDelete(legacyP12Path);
+        }
+    };
+
     console.log(`\n[SpeedySign] Firmando "${appName}" con motor ${signerPref}`);
 
-    for (const signer of signerOrder) {
-        const toolPath = getSignerToolPath(signer);
-        const unsupportedReason = getUnsupportedReason(signer, options);
+    try {
+        for (const signer of signerOrder) {
+            const toolPath = getSignerToolPath(signer);
+            const unsupportedReason = getUnsupportedReason(signer, options);
 
-        if (unsupportedReason) {
-            console.warn(`  [SpeedySign] Saltando ${signer}: ${unsupportedReason}`);
-            errors.push(`${signer}: ${unsupportedReason}`);
-            continue;
-        }
-
-        if (!fs.existsSync(toolPath)) {
-            const missingMessage = `${signer} no encontrado en el servidor`;
-            console.warn(`  [SpeedySign] ${missingMessage}`);
-            errors.push(missingMessage);
-            continue;
-        }
-
-        try {
-            if (fs.existsSync(options.outputPath)) {
-                fs.unlinkSync(options.outputPath);
+            if (unsupportedReason) {
+                console.warn(`  [SpeedySign] Saltando ${signer}: ${unsupportedReason}`);
+                errors.push(`${signer}: ${unsupportedReason}`);
+                continue;
             }
 
-            await runTool(
-                toolPath,
-                getSignerArgs(signer, options),
-                signer,
-                signal,
-                getSignerSensitiveArgFlags(signer)
-            );
-            await logSigningAttempt(userId, ip, appName, bundleId || '', signer, mode, true);
-            return { success: true, outputPath: options.outputPath, signerUsed: signer };
-        } catch (e: any) {
-            if (e.message === 'Cancelled') throw e;
-            const message = e.message || `Fallo en ${signer}`;
-            console.warn(`  [SpeedySign] Fallo en ${signer}: ${message}`);
-            errors.push(message);
-            await logSigningAttempt(userId, ip, appName, bundleId || '', signer, mode, false, message);
-        }
-    }
+            if (!fs.existsSync(toolPath)) {
+                const missingMessage = `${signer} no encontrado en el servidor`;
+                console.warn(`  [SpeedySign] ${missingMessage}`);
+                errors.push(missingMessage);
+                continue;
+            }
 
-    console.error(`  [SpeedySign] Error interno de firma: ${errors.join(' | ')}`);
-    throw new Error(IS_PRODUCTION ? 'Error al firmar la app' : errors.join(' | '));
+            try {
+                if (fs.existsSync(options.outputPath)) {
+                    fs.unlinkSync(options.outputPath);
+                }
+
+                // Para zsign C++: convertir el P12 a formato legacy
+                let signerOptions = options;
+                if (signer === 'zsign' && !legacyP12Path) {
+                    legacyP12Path = await convertP12ToLegacy(options.p12Path, options.p12Pass || '');
+                    if (legacyP12Path !== options.p12Path) {
+                        signerOptions = { ...options, p12Path: legacyP12Path };
+                    }
+                } else if (signer === 'zsign' && legacyP12Path && legacyP12Path !== options.p12Path) {
+                    signerOptions = { ...options, p12Path: legacyP12Path };
+                }
+
+                await runTool(
+                    toolPath,
+                    getSignerArgs(signer, signerOptions),
+                    signer,
+                    signal,
+                    getSignerSensitiveArgFlags(signer)
+                );
+                await logSigningAttempt(userId, ip, appName, bundleId || '', signer, mode, true);
+                cleanupLegacyP12();
+                return { success: true, outputPath: options.outputPath, signerUsed: signer };
+            } catch (e: any) {
+                if (e.message === 'Cancelled') throw e;
+                const message = e.message || `Fallo en ${signer}`;
+                console.warn(`  [SpeedySign] Fallo en ${signer}: ${message}`);
+                errors.push(message);
+                await logSigningAttempt(userId, ip, appName, bundleId || '', signer, mode, false, message);
+            }
+        }
+
+        console.error(`  [SpeedySign] Error interno de firma: ${errors.join(' | ')}`);
+        throw new Error(IS_PRODUCTION ? 'Error al firmar la app' : errors.join(' | '));
+    } finally {
+        cleanupLegacyP12();
+    }
 }
