@@ -24,7 +24,7 @@ graph TD
     A[Dispositivo iOS] -->|1. Sube certificado .p12 y .mobileprovision| B(Supabase Secure Storage)
     A -->|2. Selecciona o sube IPA | C{Servidor Express}
     C -->|3. Descarga IPA & Certificados de forma segura| C
-    C -->|4. Aplica modificaciones: Inyección Dylib, BundleID, Compartir Archivos| D[zsign-rs (Rust)]
+    C -->|4. Aplica modificaciones: Inyección Dylib, BundleID, Compartir Archivos| D["zsign-rs (Rust)"]
     D -->|5. Genera IPA firmado criptográficamente| C
     C -->|6. Genera Manifiesto OTA| C
     C -->|7. Instalación instantánea via itms-services| A
