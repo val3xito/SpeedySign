@@ -22,7 +22,7 @@ import {
     Platform,
 } from "react-native";
 import Animated, {
-    FadeInDown,
+    FadeInUp,
     FadeOutDown,
     Easing,
     cancelAnimation,
@@ -135,7 +135,7 @@ export function FloatingSigningBubble() {
         <>
             {/* ── Burbuja flotante ─────────────────────────────────────────── */}
             {showBubble && <Animated.View
-                entering={FadeInDown.springify().damping(18).stiffness(160)}
+                entering={FadeInUp.springify().damping(18).stiffness(160)}
                 exiting={FadeOutDown.duration(250)}
                 style={[
                     styles.bubbleWrapper,
@@ -346,6 +346,7 @@ const styles = StyleSheet.create({
         position: "absolute",
         left: 16,
         right: 16,
+        bottom: 120,   // fallback por si los safe-area insets tardan en calcularse
         zIndex: 999,
     },
     bubble: {
