@@ -610,7 +610,7 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
                 cleanupAll();
                 addStrike();
                 if (jobId) emitProgress(jobId, { phase: "error", message: errorMsg });
-                return res.status(400).json({ error: errorMsg });
+                return;
             }
 
             // Protección contra Zip Bombs

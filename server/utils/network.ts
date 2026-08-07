@@ -362,10 +362,14 @@ export function resolveTelegramDownload(urlStr: string): Promise<GoogleDriveReso
 
                 res.on("end", () => {
                     const docMatch = body.match(/href=["'](https:\/\/[^"']*(?:cdn-telegram\.org|telegram\.org\/file|\.ipa)[^"']*)["']/i)
-                        || body.match(/<a[^>]*class=["'][^"']*tgme_widget_message_document[^"']*["'][^>]*href=["'](https:\/\/[^"']+)["']/i)
-                        || body.match(/href=["'](https:\/\/t\.me\/[^"']+\?single[^"']*)["']/i);
+                        || body.match(/src=["'](https:\/\/[^"']*(?:cdn-telegram\.org|telegram\.org\/file|\.ipa)[^"']*)["']/i)
+                        || body.match(/<a[^>]*class=["'][^"']*tgme_widget_message_document[^"']*["'][^>]*href=["'](https:\/\/[^"']+\.ipa[^"']*)["']/i);
 
-                    const downloadUrl = docMatch ? docMatch[1].replace(/&amp;/g, "&") : urlStr;
+                    let downloadUrl = docMatch ? docMatch[1].replace(/&amp;/g, "&") : null;
+
+                    if (!downloadUrl || (downloadUrl.includes("t.me/") && !downloadUrl.toLowerCase().includes(".ipa"))) {
+                        return reject(new Error("No se pudo extraer un enlace de descarga directa .ipa de Telegram. Usa un enlace directo al archivo o a Google Drive / servidor web."));
+                    }
 
                     let filename: string | null = null;
                     const nameMatch = body.match(/class=["'][^"']*tgme_widget_message_document_title[^"']*["'][^>]*>([^<]+)</i)
