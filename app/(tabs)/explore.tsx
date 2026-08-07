@@ -340,14 +340,19 @@ export default function ExploreScreen() {
         }
 
         if (!name) {
-            const isDrive = url.includes("drive.google.com");
+            const isDrive = url.includes("drive.google.com") || url.includes("docs.google.com") || url.includes("drive.usercontent.google.com");
+            const isTelegram = url.includes("t.me") || url.includes("telegram.me") || url.includes("telegram.org");
+
             if (isDrive) {
-                const fileDRegex = /\/file\/d\/([a-zA-Z0-9_-]+)/;
+                const fileDRegex = /\/(?:file\/d|d|open)\/([a-zA-Z0-9_-]+)/;
                 const matchD = url.match(fileDRegex);
                 const idRegex = /[?&]id=([a-zA-Z0-9_-]+)/;
                 const matchId = url.match(idRegex);
                 const docId = (matchD && matchD[1]) || (matchId && matchId[1]) || "drive";
                 name = `Drive-${docId.substring(0, 6)}`;
+            } else if (isTelegram) {
+                const lastSeg = url.split("/").pop() || "";
+                name = `Telegram-${lastSeg.substring(0, 8)}`;
             } else {
                 try {
                     const parsedUrl = new URL(url);
@@ -366,6 +371,15 @@ export default function ExploreScreen() {
             name = "App Importada";
         }
 
+        const isDrive = url.includes("drive.google.com") || url.includes("docs.google.com") || url.includes("drive.usercontent.google.com");
+        const isTelegram = url.includes("t.me") || url.includes("telegram.me") || url.includes("telegram.org");
+        const iconUrl = isDrive 
+            ? "https://img.icons8.com/color/96/google-drive--v1.png"
+            : isTelegram
+                ? "https://img.icons8.com/color/96/telegram-app.png"
+                : "https://img.icons8.com/color/96/link.png";
+        const repoLabel = isDrive ? "Google Drive" : isTelegram ? "Telegram" : "Enlace Externo";
+
         setImportModalVisible(false);
         setUrlInput("");
         setUrlAppName("");
@@ -376,13 +390,11 @@ export default function ExploreScreen() {
                 id:          "custom.import.ipa",
                 name:        name,
                 version:     "Enlace",
-                icon:        url.includes("drive.google.com") 
-                    ? "https://img.icons8.com/color/96/google-drive--v1.png"
-                    : "https://img.icons8.com/color/96/link.png",
+                icon:        iconUrl,
                 description: "Aplicación importada mediante enlace externo para ser firmada.",
                 downloadURL: normalizedUrl,
                 size:        sizeStr,
-                repoName:    "Enlace Externo",
+                repoName:    repoLabel,
                 category:    "sideload",
             },
         });

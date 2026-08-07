@@ -122,10 +122,11 @@ interface GoogleDriveResolution {
 export function getGoogleDriveFileId(urlStr: string): string | null {
     try {
         const url = new URL(urlStr);
-        if (!url.hostname.includes("drive.google.com") && !url.hostname.includes("docs.google.com")) {
+        const host = url.hostname.toLowerCase();
+        if (!host.includes("drive.google.com") && !host.includes("docs.google.com") && !host.includes("drive.usercontent.google.com")) {
             return null;
         }
-        const fileDRegex = /\/file\/d\/([a-zA-Z0-9_-]+)/;
+        const fileDRegex = /\/(?:file\/d|d|open)\/([a-zA-Z0-9_-]+)/;
         const matchD = url.pathname.match(fileDRegex);
         if (matchD && matchD[1]) return matchD[1];
 
@@ -146,7 +147,7 @@ export function resolveGoogleDriveDownload(fileId: string): Promise<GoogleDriveR
     return new Promise((resolve, reject) => {
         const driveUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
         const headers = {
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "*/*",
         };
 
@@ -237,26 +238,43 @@ export function resolveGoogleDriveDownload(fileId: string): Promise<GoogleDriveR
                     res.on("data", (chunk) => {
                         if (destroyed) return;
                         body += chunk.toString();
-                        if (body.length > 150000) {
+                        if (body.length > 250000) {
                             destroyed = true;
                             res.destroy();
-                            reject(new Error("Respuesta de Google Drive demasiado grande al buscar confirmación"));
                         }
                     });
 
                     res.on("end", () => {
                         if (destroyed) return;
-                        const confirmMatch = body.match(/confirm=([A-Za-z0-9_-]+)/);
-                        const confirmToken = confirmMatch ? confirmMatch[1] : null;
+
+                        const hrefMatch = body.match(/href=["'](https:\/\/[^"']*drive\.usercontent\.google\.com\/download[^"']+)["']/i)
+                            || body.match(/href=["'](https:\/\/[^"']*drive\.google\.com\/uc\?export=download[^"']+)["']/i);
+                        
+                        if (hrefMatch && hrefMatch[1]) {
+                            const confirmedUrl = hrefMatch[1].replace(/&amp;/g, "&");
+                            return makeRequest(confirmedUrl, redirectsLeft - 1, currentCookies);
+                        }
+
+                        const actionMatch = body.match(/action=["'](https:\/\/[^"']+)["']/i);
+                        const confirmMatch = body.match(/name=["']confirm["']\s+value=["']([^"']+)["']/i)
+                            || body.match(/confirm=([A-Za-z0-9_-]+)/i);
+                        const uuidMatch = body.match(/name=["']uuid["']\s+value=["']([^"']+)["']/i)
+                            || body.match(/uuid=([A-Za-z0-9_-]+)/i);
+
+                        const confirmToken = confirmMatch ? confirmMatch[1] : "t";
+                        const uuidToken = uuidMatch ? uuidMatch[1] : null;
+
+                        let confirmedUrl = actionMatch
+                            ? actionMatch[1].replace(/&amp;/g, "&")
+                            : `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=${confirmToken}`;
+
+                        if (!confirmedUrl.includes("id=")) confirmedUrl += `&id=${fileId}`;
+                        if (!confirmedUrl.includes("confirm=")) confirmedUrl += `&confirm=${confirmToken}`;
+                        if (uuidToken && !confirmedUrl.includes("uuid=")) confirmedUrl += `&uuid=${uuidToken}`;
+
                         const newCookies = res.headers["set-cookie"] || [];
                         const mergedCookies = [...currentCookies, ...newCookies];
-
-                        if (confirmToken) {
-                            const confirmedUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=${confirmToken}`;
-                            makeRequest(confirmedUrl, redirectsLeft - 1, mergedCookies);
-                        } else {
-                            reject(new Error("No se pudo obtener el token de confirmación de Google Drive"));
-                        }
+                        makeRequest(confirmedUrl, redirectsLeft - 1, mergedCookies);
                     });
 
                     res.on("error", (err) => {
@@ -280,6 +298,118 @@ export function resolveGoogleDriveDownload(fileId: string): Promise<GoogleDriveR
 }
 
 /**
+ * Comprueba si una URL pertenece a Telegram.
+ */
+export function isTelegramUrl(urlStr: string): boolean {
+    try {
+        const url = new URL(urlStr);
+        const host = url.hostname.toLowerCase();
+        return (
+            host === "t.me" ||
+            host === "telegram.me" ||
+            host.endsWith(".telegram.org") ||
+            host.endsWith(".cdn-telegram.org")
+        );
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Resuelve y extrae el enlace directo de descarga de archivos IPA compartidos en Telegram.
+ */
+export function resolveTelegramDownload(urlStr: string): Promise<GoogleDriveResolution> {
+    return new Promise((resolve, reject) => {
+        try {
+            const url = new URL(urlStr);
+            const host = url.hostname.toLowerCase();
+
+            if (host.includes("cdn-telegram.org") || host.includes("telegram.org") || url.pathname.toLowerCase().endsWith(".ipa")) {
+                let filename: string | null = null;
+                const lastSeg = url.pathname.substring(url.pathname.lastIndexOf("/") + 1);
+                if (lastSeg && lastSeg.toLowerCase().endsWith(".ipa")) {
+                    filename = decodeURIComponent(lastSeg);
+                }
+                return resolve({
+                    downloadUrl: urlStr,
+                    filename,
+                    size: null,
+                    headers: {},
+                });
+            }
+
+            let embedUrl = urlStr;
+            if (!embedUrl.includes("?embed=1")) {
+                embedUrl = embedUrl.includes("?") ? `${embedUrl}&embed=1` : `${embedUrl}?embed=1`;
+            }
+
+            const headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "*/*",
+            };
+
+            const req = https.get(embedUrl, { headers, lookup: safeLookup }, (res) => {
+                if (res.statusCode! >= 300 && res.statusCode! < 400 && res.headers.location) {
+                    res.resume();
+                    return resolveTelegramDownload(res.headers.location).then(resolve).catch(reject);
+                }
+
+                let body = "";
+                res.on("data", (chunk) => {
+                    body += chunk.toString();
+                    if (body.length > 500000) res.destroy();
+                });
+
+                res.on("end", () => {
+                    const docMatch = body.match(/href=["'](https:\/\/[^"']*(?:cdn-telegram\.org|telegram\.org\/file|\.ipa)[^"']*)["']/i)
+                        || body.match(/<a[^>]*class=["'][^"']*tgme_widget_message_document[^"']*["'][^>]*href=["'](https:\/\/[^"']+)["']/i)
+                        || body.match(/href=["'](https:\/\/t\.me\/[^"']+\?single[^"']*)["']/i);
+
+                    const downloadUrl = docMatch ? docMatch[1].replace(/&amp;/g, "&") : urlStr;
+
+                    let filename: string | null = null;
+                    const nameMatch = body.match(/class=["'][^"']*tgme_widget_message_document_title[^"']*["'][^>]*>([^<]+)</i)
+                        || body.match(/class=["'][^"']*tgme_widget_message_text[^"']*["'][^>]*>([^<]+\.ipa)</i);
+                    if (nameMatch && nameMatch[1]) {
+                        filename = nameMatch[1].trim();
+                    }
+
+                    let size: number | null = null;
+                    const sizeMatch = body.match(/class=["'][^"']*tgme_widget_message_document_extra[^"']*["'][^>]*>([^<]+)</i);
+                    if (sizeMatch && sizeMatch[1]) {
+                        const extraStr = sizeMatch[1].trim();
+                        const parseSize = (str: string) => {
+                            const m = str.match(/([\d.]+)\s*(KB|MB|GB)/i);
+                            if (!m) return null;
+                            const num = parseFloat(m[1]);
+                            const unit = m[2].toUpperCase();
+                            if (unit === "KB") return Math.round(num * 1024);
+                            if (unit === "MB") return Math.round(num * 1024 * 1024);
+                            if (unit === "GB") return Math.round(num * 1024 * 1024 * 1024);
+                            return null;
+                        };
+                        size = parseSize(extraStr);
+                    }
+
+                    resolve({
+                        downloadUrl,
+                        filename,
+                        size,
+                        headers: {},
+                    });
+                });
+
+                res.on("error", (err) => reject(err));
+            });
+
+            req.on("error", (err) => reject(err));
+        } catch (e: any) {
+            reject(e);
+        }
+    });
+}
+
+/**
  * Resuelve el nombre y tamaño reales del archivo desde una URL externa.
  */
 export async function resolveUrlInfo(url: string): Promise<{ filename: string | null; size: number | null }> {
@@ -293,6 +423,19 @@ export async function resolveUrlInfo(url: string): Promise<{ filename: string | 
             };
         } catch (err) {
             console.error("Error al resolver URL de Google Drive:", err);
+            return { filename: null, size: null };
+        }
+    }
+
+    if (isTelegramUrl(url)) {
+        try {
+            const tgRes = await resolveTelegramDownload(url);
+            return {
+                filename: tgRes.filename,
+                size: tgRes.size
+            };
+        } catch (err) {
+            console.error("Error al resolver URL de Telegram:", err);
             return { filename: null, size: null };
         }
     }
@@ -522,6 +665,17 @@ export function downloadFile(
                             return reject(new Error("Cancelled"));
                         }
                         startDownload(driveRes.downloadUrl, driveRes.headers);
+                    })
+                    .catch((err) => {
+                        reject(err);
+                    });
+            } else if (isTelegramUrl(url)) {
+                resolveTelegramDownload(url)
+                    .then((tgRes) => {
+                        if (signal?.aborted) {
+                            return reject(new Error("Cancelled"));
+                        }
+                        startDownload(tgRes.downloadUrl, tgRes.headers);
                     })
                     .catch((err) => {
                         reject(err);
