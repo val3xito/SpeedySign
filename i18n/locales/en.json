@@ -17,7 +17,10 @@
     "errorImport": "An error occurred while importing the file.",
     "localFile": "Local File",
     "localDesc": "Locally imported IPA file to be signed.",
-    "telegramBannerTitle": "Find more repositories on our Telegram"
+    "telegramBannerTitle": "Find more repositories on our Telegram",
+    "urlOption": "Link / Drive / Telegram",
+    "urlDesc": "Import using a direct link, Google Drive, or Telegram (max 500 MB).",
+    "urlInputLabel": "App Link (URL / Drive / Telegram)"
   },
   "repos": {
     "title": "Repositories",

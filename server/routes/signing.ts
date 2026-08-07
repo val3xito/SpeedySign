@@ -599,11 +599,18 @@ signingRouter.post("/sign", requireAuth, signLimiter, upload.fields([
 
             // Verificar que el IPA es un ZIP válido (magic bytes PK\x03\x04)
             if (!isValidIPAFile(tempIpaPath)) {
+                let errorMsg = "El archivo no es una aplicación IPA válida";
+                try {
+                    const preview = fs.readFileSync(tempIpaPath, "utf8").slice(0, 500);
+                    if (preview.includes("<html") || preview.includes("<!DOCTYPE html") || preview.includes("<HTML")) {
+                        errorMsg = "La URL proporcionada devolvió una página HTML en lugar de un archivo .ipa válido. Si es de Telegram o Drive, asegúrate de que sea un enlace directo o de un canal público.";
+                    }
+                } catch { }
                 if (!ipaFile && fs.existsSync(tempIpaPath)) fs.unlinkSync(tempIpaPath);
                 cleanupAll();
                 addStrike();
-                if (jobId) emitProgress(jobId, { phase: "error", message: "El archivo no es un IPA válido" });
-                return;
+                if (jobId) emitProgress(jobId, { phase: "error", message: errorMsg });
+                return res.status(400).json({ error: errorMsg });
             }
 
             // Protección contra Zip Bombs

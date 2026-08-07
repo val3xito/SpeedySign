@@ -984,10 +984,10 @@ export default function ExploreScreen() {
                                         </View>
                                         <View style={{ flex: 1 }}>
                                             <Text style={{ color: colors.text, fontSize: 16, fontWeight: "600" }}>
-                                                {t("explore.urlOption", "Enlace / Google Drive")}
+                                                {t("explore.urlOption", "Enlace / Drive / Telegram")}
                                             </Text>
                                             <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 2 }}>
-                                                {t("explore.urlDesc", "Importa usando un enlace directo o compartido de Drive (máx. 500 MB).")}
+                                                {t("explore.urlDesc", "Importa usando un enlace directo, Google Drive o Telegram (máx. 500 MB).")}
                                             </Text>
                                         </View>
                                         <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} style={{ opacity: 0.5 }} />
@@ -1018,7 +1018,7 @@ export default function ExploreScreen() {
 
                                     {/* Input: URL */}
                                     <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "600", marginBottom: 6, letterSpacing: 0.5, textTransform: "uppercase" }}>
-                                        {t("explore.urlInputLabel", "Enlace de la App (URL / Google Drive)")}
+                                        {t("explore.urlInputLabel", "Enlace de la App (URL / Drive / Telegram)")}
                                     </Text>
                                     <View
                                         style={{
@@ -1026,13 +1026,13 @@ export default function ExploreScreen() {
                                             overflow: "hidden",
                                             marginBottom: 16,
                                             borderWidth: 1,
-                                            borderColor: isDark ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.70)",
+                                            borderColor: isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.15)",
                                             backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.45)",
                                             opacity: isResolvingUrl ? 0.6 : 1,
                                         }}
                                     >
                                         <TextInput
-                                            placeholder="https://drive.google.com/... o enlace directo"
+                                            placeholder="https://drive.google.com/..., t.me/... o enlace directo"
                                             placeholderTextColor={isDark ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.30)"}
                                             value={urlInput}
                                             onChangeText={setUrlInput}
