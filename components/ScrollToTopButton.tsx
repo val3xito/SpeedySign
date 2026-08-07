@@ -14,7 +14,9 @@ import Animated, {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { usePathname } from "expo-router";
 import { useTheme } from "../hooks/useTheme";
+import { useSigningContext } from "../contexts/SigningContext";
 
 interface ScrollToTopButtonProps {
     visible: boolean;
@@ -30,14 +32,27 @@ export function ScrollToTopButton({
     bottomOffset = 90,
 }: ScrollToTopButtonProps) {
     const { colors, isDark } = useTheme();
+    const pathname = usePathname();
+    const { signingState } = useSigningContext();
+    const { isSigning, signingComplete, signingError } = signingState;
+
+    const isOnDetailScreen = pathname.startsWith("/app-detail");
+    const isBubbleActive = (isSigning || signingComplete || signingError) && !isOnDetailScreen;
+
     const opacity = useSharedValue(0);
+    const translateY = useSharedValue(0);
 
     useEffect(() => {
         opacity.value = withTiming(visible ? 1 : 0, { duration: 140 });
     }, [visible]);
 
+    useEffect(() => {
+        translateY.value = withTiming(isBubbleActive ? -70 : 0, { duration: 250 });
+    }, [isBubbleActive]);
+
     const animatedStyle = useAnimatedStyle(() => ({
         opacity: opacity.value,
+        transform: [{ translateY: translateY.value }],
     }));
 
     return (
