@@ -72,7 +72,8 @@ export default function SettingsScreen() {
             }
             if (typeof document !== "undefined") {
                 downloadRepoBackupWeb(json);
-                notify.success(t("settings.done", "¡Listo!"), t("settings.exportSuccess", `${parsed.repos.length} repositorios exportados.`));
+                const count = parsed.repos.length;
+                notify.success(t("settings.done", "¡Listo!"), t("settings.exportSuccess", "{{count}} repositorios exportados.", { count }));
             }
         } catch {
             notify.error(t("common.error", "Error"), t("settings.exportError", "No se pudo exportar."));
