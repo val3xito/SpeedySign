@@ -10,6 +10,7 @@ import os from "os";
 import { pipeline } from "stream/promises";
 import { Request } from "express";
 import { isPrivateHostname, safeLookup } from "./validation";
+import { getTelegramFileInfo, downloadTelegramFileViaMTProto } from "../services/telegramService";
 
 const PORT = process.env.PORT || 3001;
 export const MAX_DOWNLOAD_SIZE = parseInt(process.env.MAX_DOWNLOAD_SIZE || "524288000", 10); // 500 MB por defecto
@@ -433,14 +434,21 @@ export async function resolveUrlInfo(url: string): Promise<{ filename: string | 
 
     if (isTelegramUrl(url)) {
         try {
-            const tgRes = await resolveTelegramDownload(url);
-            return {
-                filename: tgRes.filename,
-                size: tgRes.size
-            };
-        } catch (err) {
-            console.error("Error al resolver URL de Telegram:", err);
-            return { filename: null, size: null };
+            const tgInfo = await getTelegramFileInfo(url);
+            if (tgInfo.filename || tgInfo.size) {
+                return tgInfo;
+            }
+        } catch {
+            try {
+                const tgRes = await resolveTelegramDownload(url);
+                return {
+                    filename: tgRes.filename,
+                    size: tgRes.size
+                };
+            } catch (err) {
+                console.error("Error al resolver URL de Telegram:", err);
+                return { filename: null, size: null };
+            }
         }
     }
 
@@ -674,15 +682,18 @@ export function downloadFile(
                         reject(err);
                     });
             } else if (isTelegramUrl(url)) {
-                resolveTelegramDownload(url)
-                    .then((tgRes) => {
-                        if (signal?.aborted) {
-                            return reject(new Error("Cancelled"));
-                        }
-                        startDownload(tgRes.downloadUrl, tgRes.headers);
-                    })
+                downloadTelegramFileViaMTProto(url, destPath, onProgress, signal)
+                    .then(() => resolve())
                     .catch((err) => {
-                        reject(err);
+                        // Fallback a descarga HTTP en caso de fallo
+                        resolveTelegramDownload(url)
+                            .then((tgRes) => {
+                                if (signal?.aborted) {
+                                    return reject(new Error("Cancelled"));
+                                }
+                                startDownload(tgRes.downloadUrl, tgRes.headers);
+                            })
+                            .catch(() => reject(err));
                     });
             } else {
                 startDownload(url);

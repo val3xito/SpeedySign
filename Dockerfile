@@ -59,7 +59,7 @@ RUN cp web/manifest.json dist/manifest.json
 # ── Imagen final ──
 FROM node:20-slim
 
-# Instalar dependencias runtime
+# Instalar dependencias runtime y build tools para node-gyp (python3, make, g++)
 # gosu: para bajar privilegios de root a 'node' de forma segura en el entrypoint
 # clamav + clamav-daemon: para el daemon clamd de escaneo antivirus
 RUN apt-get update && apt-get install -y \
@@ -71,6 +71,9 @@ RUN apt-get update && apt-get install -y \
     clamav \
     clamav-daemon \
     gosu \
+    python3 \
+    make \
+    g++ \
     && rm -rf /var/lib/apt/lists/* \
     && freshclam --quiet || true
 

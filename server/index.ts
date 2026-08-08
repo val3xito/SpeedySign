@@ -18,6 +18,7 @@
  *  - services/ocspService.ts    → Verificación OCSP
  */
 
+import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -25,6 +26,8 @@ import compression from "compression";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
+
+dotenv.config();
 
 import { proxyRouter } from "./routes/proxy";
 import { signingRouter, apiLimiter } from "./routes/signing";
